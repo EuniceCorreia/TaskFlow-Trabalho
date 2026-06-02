@@ -1,0 +1,27 @@
+# Build outputs
+bin/
+obj/
+
+# Visual Studio / user-specific files
+.vs/
+.claude/
+*.user
+*.suo
+*.userosscache
+*.sln.docstates
+
+# Rider / VS Code
+.idea/
+.vscode/
+
+# Logs
+*.log
+
+# Node/frontend dependencies and build outputs
+node_modules/
+dist/
+build/
+.next/
+
+# Keep the SQLite database used by this prototype
+!TaskFlow.API/taskflow.db
