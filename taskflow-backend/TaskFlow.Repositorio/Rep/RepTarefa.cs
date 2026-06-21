@@ -25,13 +25,15 @@ public sealed class TarefaRep : ITarefaRep
 
         query = status switch
         {
-            EnumStatusTarefa.Pendente => query.Where( t => !t.Concluida),
-            EnumStatusTarefa.Concluida => query.Where( t => t.Concluida),
+            EnumStatusTarefa.Pendente => query.Where( t => t.Status == EnumStatusTarefa.Pendente),
+            EnumStatusTarefa.EmAndamento => query.Where( t => t.Status == EnumStatusTarefa.EmAndamento),
+            EnumStatusTarefa.Concluida => query.Where( t => t.Status == EnumStatusTarefa.Concluida),
+            EnumStatusTarefa.Cancelada => query.Where( t => t.Status == EnumStatusTarefa.Cancelada),
             _ => query
         };
 
         return await query
-            .OrderBy( t => t.Concluida)
+            .OrderBy( t => t.Status == EnumStatusTarefa.Concluida || t.Status == EnumStatusTarefa.Cancelada)
             .ThenBy( t => t.DataEntrega)
             .ThenByDescending( t => t.Prioridade)
             .ThenBy( t => t.Disciplina)

@@ -76,14 +76,12 @@ namespace TaskFlow.Dominio.Serv
             }
         }
 
-        public void MarcarComoConcluida(Tarefa tarefa)
-        {
-            tarefa.MarcarComoConcluida();
-        }
+        public void Iniciar(Tarefa tarefa) => tarefa.Iniciar();
 
-        public void MarcarComoPendente(Tarefa tarefa)
-        {
-            tarefa.MarcarComoPendente();
-        }
+        public void Concluir(Tarefa tarefa) => tarefa.Concluir();
+
+        public void Cancelar(Tarefa tarefa) => tarefa.Cancelar();
+
+        public void Reabrir(Tarefa tarefa) => tarefa.Reabrir();
     }
 }

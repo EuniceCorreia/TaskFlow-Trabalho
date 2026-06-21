@@ -35,7 +35,9 @@ public sealed class TarefaConfig : IEntityTypeConfiguration<Tarefa>
         builder.Property( t => t.DataEntrega)
             .IsRequired();
 
-        builder.Property( t => t.Concluida)
+        builder.Property( t => t.Status)
+            .HasConversion<string>()
+            .HasMaxLength(20)
             .IsRequired();
 
         builder.Property( t => t.CriadaEm)
@@ -43,7 +45,7 @@ public sealed class TarefaConfig : IEntityTypeConfiguration<Tarefa>
 
         builder.Property( t => t.AtualizadaEm);
 
-        builder.HasIndex( t => t.Concluida);
+        builder.HasIndex( t => t.Status);
         builder.HasIndex( t => t.DataEntrega);
         builder.HasIndex( t => new { t.Disciplina, t.Titulo })
             .IsUnique();

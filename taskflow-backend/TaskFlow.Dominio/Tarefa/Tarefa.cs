@@ -1,3 +1,5 @@
+using TaskFlow.Dominio.Classe.Estado;
+
 namespace TaskFlow.Dominio.Classe;
 
 public class Tarefa
@@ -8,7 +10,7 @@ public class Tarefa
     public string Disciplina { get; private set; }
     public EnumPrioridadeTarefa Prioridade { get; private set; }
     public DateTime DataEntrega { get; private set; }
-    public bool Concluida { get; private set; }
+    public EnumStatusTarefa Status { get; private set; }
     public DateTime CriadaEm { get; private set; }
     public DateTime? AtualizadaEm { get; private set; }
 
@@ -26,7 +28,7 @@ public class Tarefa
         Disciplina = disciplina.Trim();
         Prioridade = prioridade;
         DataEntrega = dataEntrega;
-        Concluida = false;
+        Status = EnumStatusTarefa.Pendente;
         CriadaEm = DateTime.UtcNow;
     }
 
@@ -40,25 +42,36 @@ public class Tarefa
         AtualizadaEm = DateTime.UtcNow;
     }
 
-    public void MarcarComoConcluida()
+    private IEstadoTarefa ObterEstadoAtual() => Status switch
     {
-        if (Concluida)
-        {
-            return;
-        }
+        EnumStatusTarefa.Pendente => new EstadoPendente(),
+        EnumStatusTarefa.EmAndamento => new EstadoEmAndamento(),
+        EnumStatusTarefa.Concluida => new EstadoConcluida(),
+        EnumStatusTarefa.Cancelada => new EstadoCancelada(),
+        _ => throw new InvalidOperationException($"Status desconhecido: {Status}")
+    };
 
-        Concluida = true;
+    public void Iniciar()
+    {
+        Status = ObterEstadoAtual().Iniciar().Status;
         AtualizadaEm = DateTime.UtcNow;
     }
 
-    public void MarcarComoPendente()
+    public void Concluir()
     {
-        if (!Concluida)
-        {
-            return;
-        }
+        Status = ObterEstadoAtual().Concluir().Status;
+        AtualizadaEm = DateTime.UtcNow;
+    }
 
-        Concluida = false;
+    public void Cancelar()
+    {
+        Status = ObterEstadoAtual().Cancelar().Status;
+        AtualizadaEm = DateTime.UtcNow;
+    }
+
+    public void Reabrir()
+    {
+        Status = ObterEstadoAtual().Reabrir().Status;
         AtualizadaEm = DateTime.UtcNow;
     }
 }
