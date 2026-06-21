@@ -21,9 +21,10 @@ public sealed class TarefasController : ControllerBase
     [HttpGet]
     public async Task<ActionResult<IReadOnlyList<TarefaDto>>> Listar(
         [FromQuery] EnumStatusTarefa? status,
+        [FromQuery] EnumOrdenacaoTarefa? ordenacao,
         CancellationToken cancellationToken)
     {
-        var tarefas = await _tarefaAplic.ListarAsync(status, cancellationToken);
+        var tarefas = await _tarefaAplic.ListarAsync(status, ordenacao, cancellationToken);
         return Ok(tarefas);
     }
 
@@ -60,17 +61,31 @@ public sealed class TarefasController : ControllerBase
         return excluida ? NoContent() : NotFound();
     }
 
+    [HttpPatch("{id:int}/iniciar")]
+    public async Task<ActionResult<TarefaDto>> Iniciar(int id, CancellationToken cancellationToken)
+    {
+        var tarefa = await _tarefaAplic.IniciarAsync(id, cancellationToken);
+        return tarefa is null ? NotFound() : Ok(tarefa);
+    }
+
     [HttpPatch("{id:int}/concluir")]
     public async Task<ActionResult<TarefaDto>> Concluir(int id, CancellationToken cancellationToken)
     {
-        var tarefa = await _tarefaAplic.MarcarComoConcluidaAsync(id, cancellationToken);
+        var tarefa = await _tarefaAplic.ConcluirAsync(id, cancellationToken);
+        return tarefa is null ? NotFound() : Ok(tarefa);
+    }
+
+    [HttpPatch("{id:int}/cancelar")]
+    public async Task<ActionResult<TarefaDto>> Cancelar(int id, CancellationToken cancellationToken)
+    {
+        var tarefa = await _tarefaAplic.CancelarAsync(id, cancellationToken);
         return tarefa is null ? NotFound() : Ok(tarefa);
     }
 
     [HttpPatch("{id:int}/reabrir")]
     public async Task<ActionResult<TarefaDto>> Reabrir(int id, CancellationToken cancellationToken)
     {
-        var tarefa = await _tarefaAplic.MarcarComoPendenteAsync(id, cancellationToken);
+        var tarefa = await _tarefaAplic.ReabrirAsync(id, cancellationToken);
         return tarefa is null ? NotFound() : Ok(tarefa);
     }
 }

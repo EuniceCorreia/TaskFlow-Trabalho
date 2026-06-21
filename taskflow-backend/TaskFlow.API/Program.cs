@@ -4,8 +4,10 @@ using TaskFlow.Aplicacao;
 using TaskFlow.API.Middlewares;
 using TaskFlow.Aplicacao.Aplic;
 using TaskFlow.Aplicacao.IAplic;
+using TaskFlow.Aplicacao.Observadores;
 using TaskFlow.Dominio.IRep;
 using TaskFlow.Dominio.IServ;
+using TaskFlow.Dominio.Observadores;
 using TaskFlow.Dominio.Serv;
 using TaskFlow.Repositorio.EF;
 using TaskFlow.Repositorio.Rep;
@@ -27,6 +29,12 @@ builder.Services.AddScoped<ITarefaRep, TarefaRep>();
 builder.Services.AddScoped<ITarefaServ, TarefaServ>();
 builder.Services.AddScoped<IMapperTarefa, MapperTarefa>();
 builder.Services.AddScoped<ITarefaAplic, TarefaAplic>();
+
+// Observer: registra os observadores e o gerenciador
+builder.Services.AddScoped<IObservadorTarefa, NotificacaoTelaObservador>();
+builder.Services.AddScoped<IObservadorTarefa, EmailObservador>();
+builder.Services.AddScoped<IObservadorTarefa, LogSistemaObservador>();
+builder.Services.AddScoped<IGerenciadorNotificacoes, GerenciadorNotificacoes>();
 
 var connectionString = builder.Configuration.GetConnectionString("TaskFlow");
 builder.Services.AddDbContext<TaskFlowDbContext>(options =>

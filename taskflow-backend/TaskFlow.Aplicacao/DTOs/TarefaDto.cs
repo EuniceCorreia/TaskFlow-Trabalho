@@ -10,7 +10,7 @@ namespace TaskFlow.Aplicacao.DTOs
                          string disciplina,
                          EnumPrioridadeTarefa prioridade,
                          DateTime dataEntrega,
-                         bool concluida,
+                         EnumStatusTarefa status,
                          DateTime criadaEm,
                          DateTime? atualizadaEm)
         {
@@ -20,7 +20,7 @@ namespace TaskFlow.Aplicacao.DTOs
             Disciplina = disciplina;
             Prioridade = prioridade;
             DataEntrega = dataEntrega;
-            Concluida = concluida;
+            Status = status;
             CriadaEm = criadaEm;
             AtualizadaEm = atualizadaEm;
         }
@@ -31,7 +31,7 @@ namespace TaskFlow.Aplicacao.DTOs
         public string Disciplina { get; set; }
         public EnumPrioridadeTarefa Prioridade { get; set; }
         public DateTime DataEntrega { get; set; }
-        public bool Concluida { get; set; }
+        public EnumStatusTarefa Status { get; set; }
         public DateTime CriadaEm { get; set; }
         public DateTime? AtualizadaEm { get; set; }
     }

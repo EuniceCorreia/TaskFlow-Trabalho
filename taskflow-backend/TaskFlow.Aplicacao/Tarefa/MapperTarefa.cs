@@ -14,7 +14,7 @@ public sealed class MapperTarefa : IMapperTarefa
             tarefa.Disciplina,
             tarefa.Prioridade,
             tarefa.DataEntrega,
-            tarefa.Concluida,
+            tarefa.Status,
             tarefa.CriadaEm,
             tarefa.AtualizadaEm);
     }
