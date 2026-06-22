@@ -4,7 +4,10 @@ namespace TaskFlow.Dominio.Classe.Estado;
 
 public sealed class EstadoCancelada : IEstadoTarefa
 {
-    public EnumStatusTarefa Status => EnumStatusTarefa.Cancelada;
+    public EnumStatusTarefa Status
+    {
+        get { return EnumStatusTarefa.Cancelada; }
+    }
 
     public IEstadoTarefa Iniciar()
     {
