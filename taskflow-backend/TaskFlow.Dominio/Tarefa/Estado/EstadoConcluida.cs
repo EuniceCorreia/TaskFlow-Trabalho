@@ -6,14 +6,23 @@ public sealed class EstadoConcluida : IEstadoTarefa
 {
     public EnumStatusTarefa Status => EnumStatusTarefa.Concluida;
 
-    public IEstadoTarefa Iniciar() =>
+    public IEstadoTarefa Iniciar()
+    {
         throw new RegraDeNegocioException("A tarefa ja foi concluida.");
+    }
 
-    public IEstadoTarefa Concluir() =>
+    public IEstadoTarefa Concluir()
+    {
         throw new RegraDeNegocioException("A tarefa ja foi concluida.");
+    }
 
-    public IEstadoTarefa Cancelar() =>
+    public IEstadoTarefa Cancelar()
+    {
         throw new RegraDeNegocioException("Nao e possivel cancelar uma tarefa ja concluida.");
+    }
 
-    public IEstadoTarefa Reabrir() => new EstadoPendente();
+    public IEstadoTarefa Reabrir()
+    {
+        return new EstadoPendente();
+    }
 }

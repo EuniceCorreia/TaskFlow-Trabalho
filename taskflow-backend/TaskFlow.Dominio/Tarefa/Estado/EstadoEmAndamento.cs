@@ -6,12 +6,23 @@ public sealed class EstadoEmAndamento : IEstadoTarefa
 {
     public EnumStatusTarefa Status => EnumStatusTarefa.EmAndamento;
 
-    public IEstadoTarefa Iniciar() =>
+    public IEstadoTarefa Iniciar()
+    { 
         throw new RegraDeNegocioException("A tarefa ja esta em andamento.");
+    }
 
-    public IEstadoTarefa Concluir() => new EstadoConcluida();
+    public IEstadoTarefa Concluir()
+    {
+        return new EstadoConcluida();
+    }
 
-    public IEstadoTarefa Cancelar() => new EstadoCancelada();
+    public IEstadoTarefa Cancelar()
+    {
+        return new EstadoCancelada();
+    }
 
-    public IEstadoTarefa Reabrir() => new EstadoPendente();
+    public IEstadoTarefa Reabrir()
+    {
+        return new EstadoPendente();
+    }
 }

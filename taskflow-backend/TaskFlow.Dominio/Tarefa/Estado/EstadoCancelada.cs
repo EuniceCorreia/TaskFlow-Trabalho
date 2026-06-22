@@ -6,14 +6,23 @@ public sealed class EstadoCancelada : IEstadoTarefa
 {
     public EnumStatusTarefa Status => EnumStatusTarefa.Cancelada;
 
-    public IEstadoTarefa Iniciar() =>
+    public IEstadoTarefa Iniciar()
+    {
         throw new RegraDeNegocioException("Nao e possivel iniciar uma tarefa cancelada.");
+    }
 
-    public IEstadoTarefa Concluir() =>
+    public IEstadoTarefa Concluir()
+    {
         throw new RegraDeNegocioException("Nao e possivel concluir uma tarefa cancelada.");
+    }
 
-    public IEstadoTarefa Cancelar() =>
+    public IEstadoTarefa Cancelar()
+    {
         throw new RegraDeNegocioException("A tarefa ja esta cancelada.");
+    }
 
-    public IEstadoTarefa Reabrir() => new EstadoPendente();
+    public IEstadoTarefa Reabrir()
+    {
+        return new EstadoPendente();
+    }
 }
