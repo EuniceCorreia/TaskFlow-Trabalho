@@ -5,14 +5,32 @@ import TarefaForm from './components/TarefaForm';
 
 const POSICOES_TAREFAS_KEY = 'taskflow-posicoes-tarefas';
 const CORES_TAREFAS_KEY = 'taskflow-cores-tarefas';
-const CARD_TAMANHO = 240;
-const CARD_ESPACO = 18;
+const CARD_TAMANHO = 240;  // largura
+const CARD_ALTURA  = 310;  // altura estimada máxima (cards têm min-height 240 + conteúdo)
+const CARD_ESPACO  = 18;
 
 const FILTROS = [
   { label: '📋 Todas', value: '' },
   { label: '⏳ Pendentes', value: 'Pendente' },
+  { label: '⏸ Pausadas', value: 'Pausada' },
   { label: '✅ Concluídas', value: 'Concluida' },
 ];
+
+const ORDENACOES = [
+  { label: 'Ordenação padrão', value: '' },
+  { label: '📅 Por data de entrega', value: 'PorData' },
+  { label: '🔥 Por prioridade', value: 'PorPrioridade' },
+  { label: '🔤 Por título', value: 'PorTitulo' },
+  { label: '⚠️ Apenas atrasadas', value: 'ApenasAtrasadas' },
+];
+
+const EVENTO_ESTILO = {
+  Criada: 'notif-info',
+  Concluida: 'notif-sucesso',
+  Pausada: 'notif-aviso',
+  ProximaDoVencimento: 'notif-atencao',
+  Atrasada: 'notif-perigo',
+};
 
 function lerPosicoesSalvas() {
   try {
@@ -43,7 +61,7 @@ function calcularPosicaoInicial(index, larguraPainel) {
 
   return {
     x: (index % colunas) * (CARD_TAMANHO + CARD_ESPACO),
-    y: Math.floor(index / colunas) * (CARD_TAMANHO + CARD_ESPACO),
+    y: Math.floor(index / colunas) * (CARD_ALTURA + CARD_ESPACO),
   };
 }
 
@@ -51,8 +69,8 @@ function posicoesSobrepostas(a, b) {
   return (
     a.x < b.x + CARD_TAMANHO + CARD_ESPACO &&
     a.x + CARD_TAMANHO + CARD_ESPACO > b.x &&
-    a.y < b.y + CARD_TAMANHO + CARD_ESPACO &&
-    a.y + CARD_TAMANHO + CARD_ESPACO > b.y
+    a.y < b.y + CARD_ALTURA + CARD_ESPACO &&
+    a.y + CARD_ALTURA + CARD_ESPACO > b.y
   );
 }
 
@@ -72,9 +90,11 @@ function calcularPosicaoLivre(posicoesAtuais, larguraPainel) {
   return calcularPosicaoInicial(ocupadas.length, larguraPainel);
 }
 
+
 export default function App() {
   const [tarefas, setTarefas] = useState([]);
   const [filtro, setFiltro] = useState('');
+  const [ordenacao, setOrdenacao] = useState('');
   const [mostrarForm, setMostrarForm] = useState(false);
   const [tarefaEditando, setTarefaEditando] = useState(null);
   const [posicoes, setPosicoes] = useState(() => lerPosicoesSalvas());
@@ -82,6 +102,8 @@ export default function App() {
   const [tarefaArrastadaId, setTarefaArrastadaId] = useState(null);
   const [erro, setErro] = useState('');
   const [carregando, setCarregando] = useState(true);
+  const [notificacoes, setNotificacoes] = useState([]);
+  const notifVistaRef = useRef(new Set());
   const listaRef = useRef(null);
   const tarefaArrastadaRef = useRef(null);
   const deslocamentoArrasteRef = useRef({ x: 0, y: 0 });
@@ -89,7 +111,7 @@ export default function App() {
   const carregar = useCallback(async () => {
     try {
       setCarregando(true);
-      const dados = await api.listar(filtro || undefined);
+      const dados = await api.listar(filtro || undefined, ordenacao || undefined);
       setTarefas(dados);
       setErro('');
     } catch {
@@ -97,31 +119,56 @@ export default function App() {
     } finally {
       setCarregando(false);
     }
-  }, [filtro]);
+  }, [filtro, ordenacao]);
+
+  const atualizarNotificacoes = useCallback(async () => {
+    const dados = await api.buscarNotificacoes();
+    if (!Array.isArray(dados)) return;
+    const novas = dados.filter(n => !notifVistaRef.current.has(n.id));
+    if (novas.length === 0) return;
+    novas.forEach(n => notifVistaRef.current.add(n.id));
+    setNotificacoes(prev => [...novas, ...prev].slice(0, 6));
+  }, []);
 
   useEffect(() => { carregar(); }, [carregar]);
+
+  useEffect(() => {
+    atualizarNotificacoes();
+    const intervalo = setInterval(atualizarNotificacoes, 8000);
+    return () => clearInterval(intervalo);
+  }, [atualizarNotificacoes]);
 
   useEffect(() => {
     if (!listaRef.current || tarefas.length === 0) return;
 
     const larguraPainel = listaRef.current.clientWidth || CARD_TAMANHO;
 
-    setPosicoes(atuais => {
-      const proximas = { ...atuais };
-      let mudou = false;
-
-      tarefas.forEach((tarefa) => {
-        const id = String(tarefa.id);
-        if (!proximas[id]) {
-          proximas[id] = calcularPosicaoLivre(proximas, larguraPainel);
-          mudou = true;
-        }
+    if (ordenacao) {
+      // Ordenação ativa: posiciona todos os cards pela ordem da API
+      const proximas = {};
+      tarefas.forEach((tarefa, index) => {
+        proximas[String(tarefa.id)] = calcularPosicaoInicial(index, larguraPainel);
       });
+      setPosicoes(proximas);
+    } else {
+      // Sem ordenação: usa posições salvas, calcula só para cards novos
+      setPosicoes(atuais => {
+        const proximas = { ...atuais };
+        let mudou = false;
 
-      if (mudou) salvarPosicoesTarefas(proximas);
-      return proximas;
-    });
-  }, [tarefas]);
+        tarefas.forEach((tarefa) => {
+          const id = String(tarefa.id);
+          if (!proximas[id]) {
+            proximas[id] = calcularPosicaoLivre(proximas, larguraPainel);
+            mudou = true;
+          }
+        });
+
+        if (mudou) salvarPosicoesTarefas(proximas);
+        return proximas;
+      });
+    }
+  }, [tarefas, ordenacao]);
 
   useEffect(() => {
     if (!tarefaArrastadaId) return undefined;
@@ -175,17 +222,29 @@ export default function App() {
     }
   }
 
+  async function handlePausar(id) {
+    try { await api.pausar(id); carregar(); atualizarNotificacoes(); } catch { setErro('Erro ao pausar.'); }
+  }
+
+  async function handleRetomar(id) {
+    try { await api.retomar(id); carregar(); atualizarNotificacoes(); } catch { setErro('Erro ao retomar.'); }
+  }
+
   async function handleConcluir(id) {
-    try { await api.concluir(id); carregar(); } catch { setErro('Erro ao concluir.'); }
+    try { await api.concluir(id); carregar(); atualizarNotificacoes(); } catch { setErro('Erro ao concluir.'); }
   }
 
   async function handleReabrir(id) {
-    try { await api.reabrir(id); carregar(); } catch { setErro('Erro ao reabrir.'); }
+    try { await api.reabrir(id); carregar(); atualizarNotificacoes(); } catch { setErro('Erro ao reabrir.'); }
   }
 
   async function handleExcluir(id) {
     if (!confirm('Tem certeza que deseja excluir esta tarefa?')) return;
     try { await api.excluir(id); carregar(); } catch { setErro('Erro ao excluir.'); }
+  }
+
+  function dispensarNotificacao(id) {
+    setNotificacoes(prev => prev.filter(n => n.id !== id));
   }
 
   function handleEditar(tarefa) {
@@ -222,11 +281,11 @@ export default function App() {
     });
   }
 
-  const pendentes = tarefas.filter(t => !t.concluida).length;
-  const concluidas = tarefas.filter(t => t.concluida).length;
+  const pendentes = tarefas.filter(t => t.status === 'Pendente' || t.status === 'Pausada').length;
+  const concluidas = tarefas.filter(t => t.status === 'Concluida').length;
   const alturaPainel = Math.max(
     420,
-    ...tarefas.map(tarefa => (posicoes[String(tarefa.id)]?.y || 0) + CARD_TAMANHO + CARD_ESPACO)
+    ...tarefas.map(tarefa => (posicoes[String(tarefa.id)]?.y || 0) + CARD_ALTURA + CARD_ESPACO)
   );
 
   return (
@@ -272,6 +331,16 @@ export default function App() {
               {f.label}
             </button>
           ))}
+          <select
+            className="select-ordenacao"
+            value={ordenacao}
+            onChange={e => setOrdenacao(e.target.value)}
+            title="Ordenar tarefas"
+          >
+            {ORDENACOES.map(o => (
+              <option key={o.value} value={o.value}>{o.label}</option>
+            ))}
+          </select>
         </div>
 
         {erro && (
@@ -300,6 +369,8 @@ export default function App() {
                 arrastando={String(tarefaArrastadaId) === String(t.id)}
                 onPointerDown={handlePointerDown}
                 onCorChange={handleCorChange}
+                onPausar={handlePausar}
+                onRetomar={handleRetomar}
                 onConcluir={handleConcluir}
                 onReabrir={handleReabrir}
                 onEditar={handleEditar}
@@ -316,6 +387,17 @@ export default function App() {
           onSalvar={handleSalvar}
           onCancelar={fecharForm}
         />
+      )}
+
+      {notificacoes.length > 0 && (
+        <div className="notif-painel">
+          {notificacoes.map(n => (
+            <div key={n.id} className={`notif-item ${EVENTO_ESTILO[n.evento] || 'notif-info'}`}>
+              <span className="notif-mensagem">{n.mensagem}</span>
+              <button className="notif-fechar" onClick={() => dispensarNotificacao(n.id)}>✕</button>
+            </div>
+          ))}
+        </div>
       )}
     </div>
   );

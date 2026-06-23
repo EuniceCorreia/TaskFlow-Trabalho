@@ -25,3 +25,5 @@ build/
 
 # Keep the SQLite database used by this prototype
 !TaskFlow.API/taskflow.db
+TaskFlow.API/*.db-shm
+TaskFlow.API/*.db-wal

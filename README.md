@@ -1,4 +1,4 @@
-# TaskFlow
+﻿# TaskFlow
 
 Sistema de gerenciamento de tarefas academicas desenvolvido como projeto final da disciplina.
 
@@ -53,9 +53,11 @@ IEstadoTarefa
 └── EstadoConcluida  → Reabrir()
 ```
 
-**Justificativa tecnica:** adicionar ou remover um estado exige criar ou remover uma classe, sem alterar as demais. A entidade `Tarefa` nao sabe mais quais transicoes sao validas — delega para o estado atual.
+**Justificativa tecnica:** as regras de cada estado ficam isoladas em classes proprias. A entidade `Tarefa` delega a validacao da operacao para o estado atual, em vez de concentrar todas as transicoes em blocos de `if/else`.
 
-**Impacto:** eliminacao de condicionais de transicao na entidade. Erros de transicao invalida lancam `RegraDeNegocioException` com mensagem clara.
+**Impacto:** eliminacao das condicionais de validacao de transicao dentro dos metodos `Pausar`, `Retomar`, `Concluir` e `Reabrir`. Erros de transicao invalida lancam `RegraDeNegocioException` com mensagem clara.
+
+**Limitacao atual:** a entidade ainda possui o metodo `ObterEstadoAtual()`, que usa um `switch` para associar o enum persistido a uma implementacao de `IEstadoTarefa`. Portanto, adicionar um novo estado exige criar sua classe e registrar esse estado nesse metodo, mas nao exige modificar as regras internas dos estados existentes.
 
 ---
 
@@ -76,9 +78,9 @@ IFiltroTarefaStrategy
 └── FiltrarConcluidasStrategy
 ```
 
-**Justificativa tecnica:** `AplicTarefa` nao conhece os algoritmos — recebe a estrategia selecionada e aplica. Cada estrategia e testavel de forma isolada.
+**Justificativa tecnica:** `AplicTarefa` nao implementa os algoritmos de ordenacao ou filtragem. Ela informa a opcao solicitada para `FiltroTarefaFactory`, recebe uma implementacao de `IFiltroTarefaStrategy` e executa o algoritmo por meio da interface comum. Cada estrategia pode ser testada de forma isolada.
 
-**Impacto:** extensao sem modificacao. Novos criterios sao novas classes.
+**Impacto:** os algoritmos deixaram de ficar misturados no fluxo de listagem. Novos criterios sao implementados em novas classes Strategy e registrados na Factory correspondente, sem aumentar a complexidade de `ListarAsync`.
 
 ---
 
@@ -97,9 +99,11 @@ IObservadorTarefa
 
 **Eventos disparados:** `Criada`, `Concluida`, `Pausada`, `ProximaDoVencimento`, `Atrasada`.
 
-**Justificativa tecnica:** adicionar um novo canal (push mobile, SMS) e registrar uma nova classe no DI do ASP.NET Core, sem alterar nenhum codigo existente.
+**Justificativa tecnica:** adicionar um novo canal, como push mobile ou SMS, exige criar uma classe que implemente `IObservadorTarefa` e registra-la no container de injecao de dependencia. O caso de uso nao precisa conhecer a classe concreta do novo canal.
 
-**Impacto:** total desacoplamento entre quem gera o evento e quem reage a ele.
+**Impacto:** reducao significativa do acoplamento entre quem publica o evento e os canais concretos que reagem a ele. `TarefaAplic` ainda conhece `IGerenciadorNotificacoes` e decide quando publicar cada `EventoTarefa`, mas nao depende de `EmailObservador`, `LogSistemaObservador` ou `NotificacaoTelaObservador`.
+
+**Observacao sobre a implementacao atual:** `EmailObservador` simula o envio por meio de log. `NotificacaoTelaObservador` tambem registra uma mensagem no log do backend; ele nao envia diretamente a notificacao para o React. As notificacoes visuais do frontend sao montadas pelo proprio frontend a partir das tarefas carregadas.
 
 ---
 
@@ -122,15 +126,17 @@ FiltroTarefaFactory (abstract)
 └── FiltragemFactory  → ApenasAtrasadas, ApenasConcluidas
 ```
 
-**Justificativa tecnica:** a decisao de qual objeto criar fica nas subclasses. Adicionar um novo grupo de filtros e criar uma nova subclasse de `FiltroTarefaFactory`.
+**Justificativa tecnica:** o metodo abstrato `CriarStrategy()` define o ponto de criacao, enquanto `OrdenacaoFactory` e `FiltragemFactory` decidem quais Strategies concretas podem criar. Assim, a criacao fica separada do uso realizado por `TarefaAplic`.
 
-**Impacto:** separacao de responsabilidades na criacao de estrategias. A factory abstrata seleciona a subclasse correta; cada subclasse decide o objeto concreto.
+**Impacto:** separacao entre os grupos de ordenacao e filtragem e retirada da instanciacao direta de Strategies da camada de aplicacao.
+
+**Limitacao atual:** `ObterFactory()` ainda possui um `switch` para escolher entre `OrdenacaoFactory` e `FiltragemFactory`, e cada Factory concreta possui seu proprio `switch`. Um novo criterio exige criar a Strategy e registra-la na Factory correspondente. Mesmo assim, a logica de criacao deixou de ficar misturada ao caso de uso.
 
 ---
 
 #### 5. Facade — Estrutural
 
-**Problema resolvido:** `TarefasController` dependia diretamente de `ITarefaAplic` com 9 metodos expostos, incluindo 4 metodos de transicao de estado separados. A camada HTTP conhecia todos os detalhes internos da camada de aplicacao.
+**Problema resolvido:** `TarefasController` dependia diretamente de `ITarefaAplic` e precisava conhecer separadamente todos os casos de uso, incluindo quatro operacoes de transicao de estado. A camada HTTP ficava diretamente ligada ao contrato completo da aplicacao.
 
 **Solucao anterior inadequada:**
 ```csharp
@@ -153,9 +159,11 @@ TarefasController → ITarefaFacade → ITarefaAplic
 await _facade.TransicionarAsync(id, "pausar", ct);
 ```
 
-**Justificativa tecnica:** o controller e desacoplado da camada de aplicacao. Mudancas nos metodos de transicao nao afetam o controller. A Facade pode futuramente coordenar multiplos servicos sem que o controller saiba.
+**Justificativa tecnica:** o controller passou a depender de uma interface voltada para a API, `ITarefaFacade`. A Facade esconde a chamada concreta da camada de aplicacao e oferece um ponto unico para as transicoes. Ela tambem pode futuramente coordenar outros servicos sem expor essa complexidade ao controller.
 
-**Impacto:** reducao do acoplamento entre camadas. O controller passou de 9 dependencias de metodo para 6, com as 4 transicoes unificadas.
+**Impacto:** reducao do conhecimento do controller sobre o contrato interno da aplicacao. As quatro transicoes continuam possuindo rotas HTTP distintas, mas sao encaminhadas pela operacao unica `TransicionarAsync`.
+
+**Limitacao atual:** `TransicionarAsync` recebe a acao como `string` (`pausar`, `retomar`, `concluir` ou `reabrir`). Isso funciona, mas um enum de acao seria mais seguro contra erros de digitacao em uma evolucao futura.
 
 ---
 
@@ -380,3 +388,4 @@ Acesse `http://localhost:5173`. Swagger em `http://localhost:5273/swagger`.
 
 - Claude Code (Anthropic): apoio na implementacao dos Design Patterns, refatoracao arquitetural e atualizacao do README.
 - ChatGPT (OpenAI): apoio na implementacao base, organizacao do codigo e revisoes.
+

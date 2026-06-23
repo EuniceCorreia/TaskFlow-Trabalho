@@ -1,10 +1,23 @@
 const BASE = '/api/tarefas';
 
-export async function listar(status) {
-  const url = status ? `${BASE}?status=${status}` : BASE;
-  const res = await fetch(url);
+export async function listar(status, ordenacao) {
+  const params = new URLSearchParams();
+  if (status) params.append('status', status);
+  if (ordenacao) params.append('ordenacao', ordenacao);
+  const qs = params.toString();
+  const res = await fetch(qs ? `${BASE}?${qs}` : BASE);
   if (!res.ok) throw new Error('Erro ao buscar tarefas');
   return res.json();
+}
+
+export async function buscarNotificacoes() {
+  try {
+    const res = await fetch('/api/notificacoes');
+    if (!res.ok) return [];
+    return res.json();
+  } catch {
+    return [];
+  }
 }
 
 export async function criar(dto) {
@@ -41,5 +54,17 @@ export async function concluir(id) {
 export async function reabrir(id) {
   const res = await fetch(`${BASE}/${id}/reabrir`, { method: 'PATCH' });
   if (!res.ok) throw new Error('Erro ao reabrir tarefa');
+  return res.json();
+}
+
+export async function pausar(id) {
+  const res = await fetch(`${BASE}/${id}/pausar`, { method: 'PATCH' });
+  if (!res.ok) throw new Error('Erro ao pausar tarefa');
+  return res.json();
+}
+
+export async function retomar(id) {
+  const res = await fetch(`${BASE}/${id}/retomar`, { method: 'PATCH' });
+  if (!res.ok) throw new Error('Erro ao retomar tarefa');
   return res.json();
 }

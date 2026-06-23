@@ -1,3 +1,5 @@
+import { useState, useRef, useEffect } from 'react';
+
 const PRIORIDADE_COR = {
   Baixa: '#00b894',
   Media: '#f39c12',
@@ -11,12 +13,14 @@ const PRIORIDADE_EMOJI = {
 };
 
 const CORES_STICKNOTE = [
-  { nome: 'Amarelo', valor: '#fff7a8' },
-  { nome: 'Verde', valor: '#d9f8dc' },
-  { nome: 'Azul', valor: '#dff7ff' },
-  { nome: 'Rosa', valor: '#ffd8d8' },
-  { nome: 'Lilas', valor: '#eadcff' },
+  { nome: 'Amarelo', valor: '#fefec8' },
+  { nome: 'Verde', valor: '#b4f5b4' },
+  { nome: 'Azul', valor: '#b9e1f8' },
+  { nome: 'Rosa', valor: '#ffaad7' },
+  { nome: 'Lilas', valor: '#f3dcff' },
 ];
+
+const STATUS_MAP = { 1: 'Pendente', 2: 'Pausada', 3: 'Concluida' };
 
 export default function TarefaCard({
   tarefa,
@@ -25,11 +29,27 @@ export default function TarefaCard({
   arrastando,
   onPointerDown,
   onCorChange,
+  onPausar,
+  onRetomar,
   onConcluir,
   onReabrir,
   onEditar,
   onExcluir,
 }) {
+  const [paletaAberta, setPaletaAberta] = useState(false);
+  const paletaRef = useRef(null);
+
+  useEffect(() => {
+    if (!paletaAberta) return;
+    const fechar = (e) => {
+      if (paletaRef.current && !paletaRef.current.contains(e.target)) {
+        setPaletaAberta(false);
+      }
+    };
+    document.addEventListener('pointerdown', fechar);
+    return () => document.removeEventListener('pointerdown', fechar);
+  }, [paletaAberta]);
+
   const cor = PRIORIDADE_COR[tarefa.prioridade] || '#6c5ce7';
   const emoji = PRIORIDADE_EMOJI[tarefa.prioridade] || '⚪';
   const hoje = new Date();
@@ -38,16 +58,18 @@ export default function TarefaCard({
   dataEntrega.setHours(0, 0, 0, 0);
   const venceHoje = dataEntrega.getTime() === hoje.getTime();
   const dataPassou = dataEntrega < hoje;
-  const vencida = !tarefa.concluida && dataPassou;
+  const status = STATUS_MAP[tarefa.status] ?? tarefa.status;
+  const concluida = status === 'Concluida';
+  const pausada = status === 'Pausada';
+  const vencida = (status === 'Pendente' || status === 'Pausada') && dataPassou;
 
   return (
     <div
-      className={`card ${tarefa.concluida ? 'card-concluida' : ''} ${vencida ? 'card-vencida' : ''} ${arrastando ? 'card-arrastando' : ''}`}
+      className={`card ${concluida ? 'card-concluida' : ''} ${pausada ? 'card-pausada' : ''} ${vencida ? 'card-vencida' : ''} ${arrastando ? 'card-arrastando' : ''}`}
       data-tarefa-id={tarefa.id}
       style={{
         backgroundColor: corSticknote || undefined,
         borderColor: corSticknote || undefined,
-        borderLeft: `5px solid ${cor}`,
         left: `${posicao?.x || 0}px`,
         top: `${posicao?.y || 0}px`,
       }}
@@ -55,51 +77,48 @@ export default function TarefaCard({
     >
 
       <div className="card-header">
-        <div>
-          <span className="card-disciplina">📚 {tarefa.disciplina}</span>
-          <h3 className={`card-titulo ${tarefa.concluida ? 'riscado' : ''}`}>{tarefa.titulo}</h3>
-        </div>
-        <span className="card-prioridade" style={{ color: cor }}>
-          {emoji} {tarefa.prioridade === 'Media' ? 'Média' : tarefa.prioridade}
-        </span>
+        <span className="card-disciplina">📚 {tarefa.disciplina}</span>
+        <h3 className={`card-titulo ${concluida ? 'riscado' : ''}`}>{tarefa.titulo}</h3>
       </div>
+
+      <span className="card-prioridade" style={{ color: cor }}>
+        {emoji} {tarefa.prioridade === 'Media' ? 'Média' : tarefa.prioridade}
+        {vencida && <span className="badge-vencida">Vencida</span>}
+      </span>
 
       {tarefa.descricao && (
         <p className="card-descricao">{tarefa.descricao}</p>
       )}
 
-      <div className="card-paleta" aria-label="Cores do sticky note">
-        {CORES_STICKNOTE.map(corOpcao => (
-          <button
-            key={corOpcao.valor}
-            type="button"
-            className={`btn-cor ${corSticknote === corOpcao.valor ? 'btn-cor-ativa' : ''}`}
-            style={{ backgroundColor: corOpcao.valor }}
-            title={corOpcao.nome}
-            aria-label={`Mudar cor para ${corOpcao.nome}`}
-            onClick={() => onCorChange(tarefa.id, corOpcao.valor)}
-          />
-        ))}
+      <div className="card-paleta" ref={paletaRef} aria-label="Cores do sticky note">
+        <button
+          type="button"
+          className="btn-cor btn-cor-trigger"
+          style={{ backgroundColor: corSticknote || '#e0e0e0' }}
+          title="Mudar cor"
+          aria-label="Abrir paleta de cores"
+          onPointerDown={(e) => e.stopPropagation()}
+          onClick={(e) => { e.stopPropagation(); setPaletaAberta(a => !a); }}
+        />
+        {paletaAberta && (
+          <div className="card-paleta-opcoes">
+            {CORES_STICKNOTE.map(corOpcao => (
+              <button
+                key={corOpcao.valor}
+                type="button"
+                className={`btn-cor ${corSticknote === corOpcao.valor ? 'btn-cor-ativa' : ''}`}
+                style={{ backgroundColor: corOpcao.valor }}
+                title={corOpcao.nome}
+                aria-label={`Mudar cor para ${corOpcao.nome}`}
+                onPointerDown={(e) => e.stopPropagation()}
+                onClick={(e) => { e.stopPropagation(); onCorChange(tarefa.id, corOpcao.valor); setPaletaAberta(false); }}
+              />
+            ))}
+          </div>
+        )}
       </div>
 
-      <div
-        className="card-footer"
-        style={{
-          position: 'absolute',
-          left: 0,
-          right: 0,
-          bottom: '0.95rem',
-          width: '100%',
-          display: 'flex',
-          flexDirection: 'column',
-          alignItems: 'center',
-          justifyContent: 'center',
-          gap: '0.5rem',
-          padding: '0 0.75rem',
-          textAlign: 'center',
-          transform: 'none',
-        }}
-      >
+      <div className="card-footer">
         <span
           className={`card-data ${(dataPassou || venceHoje) ? 'data-com-aviso' : ''} ${dataPassou ? 'data-vencida' : ''} ${venceHoje ? 'data-hoje' : ''}`}
           data-aviso={dataPassou ? 'A data desta tarefa ja passou.' : venceHoje ? 'Esta tarefa vence hoje.' : undefined}
@@ -107,33 +126,49 @@ export default function TarefaCard({
           {dataPassou ? '⚠️' : '📅'} {new Date(tarefa.dataEntrega).toLocaleDateString('pt-BR')}
         </span>
 
-        <div
-          className="card-acoes"
-          style={{
-            display: 'flex',
-            flexWrap: 'wrap',
-            justifyContent: 'center',
-            alignItems: 'center',
-            gap: '0.4rem',
-            width: '100%',
-            margin: '0 auto',
-          }}
-        >
-          {tarefa.concluida ? (
-            <button className="btn-acao btn-reabrir" onClick={() => onReabrir(tarefa.id)} title="Reabrir">
-              🔄 Reabrir
-            </button>
-          ) : (
-            <button className="btn-acao btn-concluir" onClick={() => onConcluir(tarefa.id)} title="Concluir">
-              ✅ Concluir
-            </button>
+        <div className="card-acoes">
+          {status === 'Pendente' && (
+            <>
+              <button className="btn-acao btn-pausar" onClick={() => onPausar(tarefa.id)} title="Pausar">
+                ⏸ Pausar
+              </button>
+              <button className="btn-acao btn-concluir" onClick={() => onConcluir(tarefa.id)} title="Concluir">
+                ✅ Concluir
+              </button>
+              <button className="btn-acao btn-editar" onClick={() => onEditar(tarefa)} title="Editar">
+                ✏️
+              </button>
+              <button className="btn-acao btn-excluir" onClick={() => onExcluir(tarefa.id)} title="Excluir">
+                🗑️
+              </button>
+            </>
           )}
-          <button className="btn-acao btn-editar" onClick={() => onEditar(tarefa)} title="Editar">
-            ✏️
-          </button>
-          <button className="btn-acao btn-excluir" onClick={() => onExcluir(tarefa.id)} title="Excluir">
-            🗑️
-          </button>
+          {status === 'Pausada' && (
+            <>
+              <button className="btn-acao btn-retomar" onClick={() => onRetomar(tarefa.id)} title="Retomar">
+                ▶ Retomar
+              </button>
+              <button className="btn-acao btn-concluir" onClick={() => onConcluir(tarefa.id)} title="Concluir">
+                ✅ Concluir
+              </button>
+              <button className="btn-acao btn-editar" onClick={() => onEditar(tarefa)} title="Editar">
+                ✏️
+              </button>
+              <button className="btn-acao btn-excluir" onClick={() => onExcluir(tarefa.id)} title="Excluir">
+                🗑️
+              </button>
+            </>
+          )}
+          {status === 'Concluida' && (
+            <>
+              <button className="btn-acao btn-reabrir" onClick={() => onReabrir(tarefa.id)} title="Reabrir">
+                🔄 Reabrir
+              </button>
+              <button className="btn-acao btn-excluir" onClick={() => onExcluir(tarefa.id)} title="Excluir">
+                🗑️
+              </button>
+            </>
+          )}
         </div>
       </div>
     </div>
