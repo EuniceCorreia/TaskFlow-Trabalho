@@ -1,15 +1,6 @@
-﻿# TaskFlow
+# TaskFlow
 
-## Projeto Final 01: Prototipo Inicial
-
-TaskFlow e um prototipo funcional de um sistema para gerenciamento de tarefas academicas. O projeto permite que estudantes cadastrem, organizem, editem, concluam e acompanhem tarefas relacionadas a disciplinas, prazos e prioridades.
-
-Este repositorio contem as duas partes da aplicacao:
-
-- `taskflow-backend`: API REST em .NET, com regras de negocio e persistencia em SQLite.
-- `taskflow-frontend`: interface web em React/Vite, com cards em formato de sticky notes.
-
-O objetivo desta primeira entrega e apresentar um MVP funcional de ponta a ponta, com escopo limitado, interface utilizavel, backend integrado e dados persistidos.
+Sistema de gerenciamento de tarefas academicas desenvolvido como projeto final da disciplina.
 
 ## Integrantes
 
@@ -17,30 +8,229 @@ O objetivo desta primeira entrega e apresentar um MVP funcional de ponta a ponta
 - Maria Laura
 - Vitoria Viana
 
+---
+
+## Projeto Final 02: Evolucao Arquitetural com Design Patterns
+
+Esta segunda entrega evoluiu o prototipo inicial com a aplicacao de cinco Design Patterns (GoF) motivados por problemas reais identificados na arquitetura do MVP. O sistema permanece funcional e integrado apos a refatoracao.
+
+### Problemas Identificados na Arquitetura Inicial
+
+| Problema | Onde aparecia |
+|---|---|
+| Logica de transicao de status espalhada com `if/else` | `Tarefa.cs` e `AplicTarefa.cs` |
+| Algoritmos de filtro/ordenacao misturados em um unico `switch` estatico | `FiltroTarefaStrategyFactory.cs` |
+| Ausencia de mecanismo de notificacao desacoplado | Sem observadores |
+| Controller acoplado diretamente a todos os metodos da camada de aplicacao | `TarefasController.cs` |
+| Factory estatica misturando dois tipos de operacao distintos | `FiltroTarefaStrategyFactory.cs` |
+
+### Novos Requisitos Recebidos
+
+- O status de uma tarefa deve seguir transicoes controladas: nao e possivel fazer qualquer transicao a partir de qualquer estado.
+- O sistema deve notificar automaticamente quando uma tarefa e criada, concluida, pausada ou esta proxima do vencimento.
+- Deve ser possivel filtrar e ordenar tarefas de formas distintas sem alterar o core do sistema.
+- A camada HTTP nao deve depender diretamente de todos os detalhes da camada de aplicacao.
+
+### Design Patterns Aplicados
+
+#### 1. State — Comportamental
+
+**Problema resolvido:** a entidade `Tarefa` controlava transicoes de status com condicionais diretas. Qualquer mudanca de regra exigia alterar a propria entidade.
+
+**Solucao anterior inadequada:**
+```csharp
+// logica de transicao diretamente na entidade
+if (Status == Pendente) Status = Concluida;
+else throw new Exception("...");
+```
+
+**Solucao com State:** cada estado e uma classe que conhece apenas suas proprias transicoes validas.
+
+```
+IEstadoTarefa
+├── EstadoPendente   → Pausar() ou Concluir()
+├── EstadoPausada    → Retomar() ou Concluir()
+└── EstadoConcluida  → Reabrir()
+```
+
+**Justificativa tecnica:** adicionar ou remover um estado exige criar ou remover uma classe, sem alterar as demais. A entidade `Tarefa` nao sabe mais quais transicoes sao validas — delega para o estado atual.
+
+**Impacto:** eliminacao de condicionais de transicao na entidade. Erros de transicao invalida lancam `RegraDeNegocioException` com mensagem clara.
+
+---
+
+#### 2. Strategy — Comportamental
+
+**Problema resolvido:** filtros e ordenacoes estavam acoplados ao servico de listagem. Adicionar um novo criterio exigia alterar `AplicTarefa`.
+
+**Solucao anterior inadequada:** logica de ordenacao inline no metodo `ListarAsync`.
+
+**Solucao com Strategy:** cada algoritmo de filtro ou ordenacao e uma classe independente intercambiavelmente.
+
+```
+IFiltroTarefaStrategy
+├── OrdenarPorDataStrategy
+├── OrdenarPorPrioridadeStrategy
+├── OrdenarPorTituloStrategy
+├── FiltrarAtrasadasStrategy
+└── FiltrarConcluidasStrategy
+```
+
+**Justificativa tecnica:** `AplicTarefa` nao conhece os algoritmos — recebe a estrategia selecionada e aplica. Cada estrategia e testavel de forma isolada.
+
+**Impacto:** extensao sem modificacao. Novos criterios sao novas classes.
+
+---
+
+#### 3. Observer — Comportamental
+
+**Problema resolvido:** ausencia de notificacoes desacopladas. Qualquer canal de notificacao futuro exigiria alterar o fluxo principal.
+
+**Solucao com Observer:** o `GerenciadorNotificacoes` recebe todos os observadores via injecao de dependencia e os notifica a cada evento relevante.
+
+```
+IObservadorTarefa
+├── NotificacaoTelaObservador   → log de eventos para exibicao
+├── EmailObservador             → simula envio de e-mail para vencimento
+└── LogSistemaObservador        → registra todos os eventos no log
+```
+
+**Eventos disparados:** `Criada`, `Concluida`, `Pausada`, `ProximaDoVencimento`, `Atrasada`.
+
+**Justificativa tecnica:** adicionar um novo canal (push mobile, SMS) e registrar uma nova classe no DI do ASP.NET Core, sem alterar nenhum codigo existente.
+
+**Impacto:** total desacoplamento entre quem gera o evento e quem reage a ele.
+
+---
+
+#### 4. Factory Method — Criacional
+
+**Problema resolvido:** `FiltroTarefaStrategyFactory` era uma classe estatica com um unico `switch` que misturava dois tipos distintos de operacao (ordenacao e filtragem), dificultando extensao e violando o principio de responsabilidade unica.
+
+**Solucao anterior inadequada:**
+```csharp
+// estatica, sem hierarquia, mistura dois dominios
+public static IFiltroTarefaStrategy? Criar(EnumOrdenacaoTarefa? ordenacao) => ordenacao switch { ... }
+```
+
+**Solucao com Factory Method:** classe abstrata declara o Factory Method `CriarStrategy()`. Subclasses concretas especializam a criacao.
+
+```
+FiltroTarefaFactory (abstract)
+│   CriarStrategy()  ← Factory Method
+├── OrdenacaoFactory  → PorData, PorPrioridade, PorTitulo
+└── FiltragemFactory  → ApenasAtrasadas, ApenasConcluidas
+```
+
+**Justificativa tecnica:** a decisao de qual objeto criar fica nas subclasses. Adicionar um novo grupo de filtros e criar uma nova subclasse de `FiltroTarefaFactory`.
+
+**Impacto:** separacao de responsabilidades na criacao de estrategias. A factory abstrata seleciona a subclasse correta; cada subclasse decide o objeto concreto.
+
+---
+
+#### 5. Facade — Estrutural
+
+**Problema resolvido:** `TarefasController` dependia diretamente de `ITarefaAplic` com 9 metodos expostos, incluindo 4 metodos de transicao de estado separados. A camada HTTP conhecia todos os detalhes internos da camada de aplicacao.
+
+**Solucao anterior inadequada:**
+```csharp
+// controller conhecia todos os metodos de transicao individualmente
+private readonly ITarefaAplic _tarefaAplic;
+await _tarefaAplic.PausarAsync(id, ct);
+await _tarefaAplic.RetomarAsync(id, ct);
+await _tarefaAplic.ConcluirAsync(id, ct);
+await _tarefaAplic.ReabrirAsync(id, ct);
+```
+
+**Solucao com Facade:** `TarefaFacade` encapsula `ITarefaAplic` e expoe uma interface simplificada. As 4 transicoes sao unificadas em `TransicionarAsync`.
+
+```
+TarefasController → ITarefaFacade → ITarefaAplic
+```
+
+```csharp
+// controller agora delega sem conhecer qual metodo chamar
+await _facade.TransicionarAsync(id, "pausar", ct);
+```
+
+**Justificativa tecnica:** o controller e desacoplado da camada de aplicacao. Mudancas nos metodos de transicao nao afetam o controller. A Facade pode futuramente coordenar multiplos servicos sem que o controller saiba.
+
+**Impacto:** reducao do acoplamento entre camadas. O controller passou de 9 dependencias de metodo para 6, com as 4 transicoes unificadas.
+
+---
+
+### Mapa de Patterns na Arquitetura
+
+```
+Frontend (React)
+      |
+      v
+TaskFlow.API
+  TarefasController → ITarefaFacade         [Facade]
+                           |
+                           v
+TaskFlow.Aplicacao
+  TarefaAplic → FiltroTarefaFactory         [Factory Method]
+             → IFiltroTarefaStrategy        [Strategy]
+             → IGerenciadorNotificacoes     [Observer]
+                           |
+                           v
+TaskFlow.Dominio
+  Tarefa → IEstadoTarefa                    [State]
+  EstadoPendente / EstadoPausada / EstadoConcluida
+                           |
+                           v
+TaskFlow.Repositorio
+  TarefaRep → SQLite (Entity Framework Core)
+```
+
+---
+
+### Modelo de Estados (State Pattern)
+
+| Status | Pode Pausar | Pode Retomar | Pode Concluir | Pode Reabrir |
+|---|---|---|---|---|
+| Pendente | Sim → Pausada | Nao | Sim → Concluida | Nao |
+| Pausada | Nao | Sim → Pendente | Sim → Concluida | Nao |
+| Concluida | Nao | Nao | Nao | Sim → Pendente |
+
+**Vencida** e um indicador visual automatico no frontend: aparece quando o status e `Pendente` ou `Pausada` e a data de entrega ja passou. Nao e um estado persistido.
+
+---
+
+## Projeto Final 01: Prototipo Inicial
+
+O MVP inicial entregou um sistema funcional de ponta a ponta com:
+
+- Cadastro, listagem, edicao e exclusao de tarefas academicas.
+- Persistencia em SQLite via Entity Framework Core.
+- Interface React com cards em formato de sticky note.
+- Filtro por status, contadores, definicao de prioridade.
+- Personalizacao de cor e posicao dos cards com persistencia em `localStorage`.
+
+---
+
 ## Problema e Dominio
 
 Estudantes precisam acompanhar varias tarefas academicas ao mesmo tempo, cada uma com disciplina, prazo, prioridade e status diferente. Sem uma organizacao visual simples, e facil perder prazos ou esquecer atividades importantes.
 
-O dominio do TaskFlow e o gerenciamento de tarefas academicas. Cada tarefa possui titulo, descricao, disciplina, prioridade, data de entrega e status de conclusao.
+O dominio do TaskFlow e o gerenciamento de tarefas academicas. Cada tarefa possui titulo, descricao, disciplina, prioridade, data de entrega e status.
 
-## Funcionalidades Implementadas
+---
+
+## Funcionalidades do Sistema
 
 - Cadastro de tarefas academicas.
-- Listagem de tarefas.
-- Filtro por status: todas, pendentes e concluidas.
-- Consulta de tarefa por id no backend.
-- Edicao de tarefas existentes.
-- Exclusao de tarefas.
-- Marcacao de tarefa como concluida.
-- Reabertura de tarefa concluida.
-- Contadores de total, pendentes e concluidas no frontend.
-- Definicao de prioridade: baixa, media e alta.
-- Indicacao visual de tarefa vencida.
-- Cards em formato de sticky note.
-- Movimentacao livre dos cards na tela.
-- Escolha individual de cor para cada sticky note.
-- Persistencia dos dados principais no SQLite.
-- Persistencia local de posicao e cor dos cards via `localStorage`.
+- Listagem de tarefas com filtro por status.
+- Filtros e ordenacoes: por data, prioridade, titulo, apenas atrasadas, apenas concluidas.
+- Edicao e exclusao de tarefas.
+- Transicoes de estado: pausar, retomar, concluir, reabrir.
+- Indicacao visual automatica de tarefa vencida.
+- Notificacoes internas por Observer (log, e-mail simulado, tela).
+- Cards em formato de sticky note com cor e posicao personalizaveis.
+- Persistencia de posicao e cor dos cards via `localStorage`.
+
+---
 
 ## Estrutura do Repositorio
 
@@ -48,134 +238,116 @@ O dominio do TaskFlow e o gerenciamento de tarefas academicas. Cada tarefa possu
 TaskFlow-Trabalho/
 ├── taskflow-backend/
 │   ├── TaskFlow.API/
+│   │   ├── Controllers/
+│   │   ├── Facade/              ← Facade (novo)
+│   │   ├── Convencoes/
+│   │   └── Middlewares/
 │   ├── TaskFlow.Aplicacao/
+│   │   ├── Tarefa/
+│   │   └── Observadores/        ← Observer (novo)
 │   ├── TaskFlow.Dominio/
+│   │   ├── Tarefa/
+│   │   │   └── Estado/          ← State (novo)
+│   │   ├── Filtros/             ← Strategy + Factory Method (novo)
+│   │   └── Observadores/
 │   ├── TaskFlow.Repositorio/
-│   ├── TaskFlow.sln
-│   └── README.md
-│
+│   └── TaskFlow.sln
 ├── taskflow-frontend/
 │   ├── src/
-│   ├── package.json
-│   └── README.md
-│
+│   └── package.json
 └── README.md
 ```
 
+---
+
 ## Backend
 
-O backend e uma API REST desenvolvida em ASP.NET Core. Ele concentra a comunicacao HTTP, a orquestracao dos casos de uso, as regras de negocio e a persistencia dos dados.
+### Tecnologias
 
-### Tecnologias do Backend
-
-- C#
-- .NET 10
+- C# / .NET 10
 - ASP.NET Core Web API
 - Entity Framework Core
 - SQLite
 - Swagger / Swashbuckle
 
-### Camadas do Backend
+### Camadas
 
-- `TaskFlow.API`: controllers, middlewares, Swagger, CORS e injecao de dependencia.
-- `TaskFlow.Aplicacao`: orquestracao dos fluxos da aplicacao.
-- `TaskFlow.Dominio`: entidades, enums, interfaces e regras de negocio.
+- `TaskFlow.API`: controllers, facade, middlewares, Swagger, CORS e injecao de dependencia.
+- `TaskFlow.Aplicacao`: orquestracao dos casos de uso, observadores e mapper.
+- `TaskFlow.Dominio`: entidades, estados, filtros, enums, interfaces e regras de negocio.
 - `TaskFlow.Repositorio`: acesso ao banco de dados com Entity Framework Core.
 
 ### Regras de Negocio
 
-- Titulo obrigatorio.
-- Limite maximo de caracteres para titulo.
-- Limite maximo de caracteres para descricao.
-- Disciplina obrigatoria.
-- Limite maximo de caracteres para disciplina.
-- Prioridade valida.
+- Titulo obrigatorio, maximo 120 caracteres.
+- Descricao com maximo 1000 caracteres.
+- Disciplina obrigatoria, maximo 100 caracteres.
+- Prioridade valida (Baixa, Media, Alta).
 - Data de entrega obrigatoria.
 - Impedimento de tarefas duplicadas com mesmo titulo e disciplina.
+- Transicoes de estado validadas pelo pattern State.
 
 ### Banco de Dados
 
-O backend utiliza SQLite. O arquivo do banco esta versionado no projeto para esta entrega:
+O backend utiliza SQLite. O arquivo gerado automaticamente pelo `EnsureCreatedAsync` e:
 
 ```text
 taskflow-backend/TaskFlow.API/taskflow.db
 ```
 
-A tabela principal e:
-
-```text
-Tarefas
-```
+> Se o arquivo existir com dados do modelo anterior (com status `EmAndamento` ou `Cancelada`), delete-o antes de iniciar a API. O banco sera recriado automaticamente.
 
 ### Executar o Backend
-
-Na raiz do repositorio:
 
 ```powershell
 cd taskflow-backend
 dotnet restore TaskFlow.sln
-dotnet build TaskFlow.sln -m:1
 dotnet run --project TaskFlow.API
 ```
 
-A API ficara disponivel em:
+API disponivel em `http://localhost:5273`. Swagger em `http://localhost:5273/swagger`.
 
-```text
-http://localhost:5273
-```
+### Endpoints
 
-Swagger:
+| Metodo | Rota | Descricao |
+|---|---|---|
+| GET | `/api/tarefas` | Lista todas as tarefas |
+| GET | `/api/tarefas?status=Pendente` | Filtra por status |
+| GET | `/api/tarefas?ordenacao=PorData` | Ordena/filtra |
+| GET | `/api/tarefas/{id}` | Obtem tarefa por id |
+| POST | `/api/tarefas` | Cria nova tarefa |
+| PUT | `/api/tarefas/{id}` | Atualiza tarefa |
+| DELETE | `/api/tarefas/{id}` | Exclui tarefa |
+| PATCH | `/api/tarefas/{id}/pausar` | Pendente → Pausada |
+| PATCH | `/api/tarefas/{id}/retomar` | Pausada → Pendente |
+| PATCH | `/api/tarefas/{id}/concluir` | Pendente ou Pausada → Concluida |
+| PATCH | `/api/tarefas/{id}/reabrir` | Concluida → Pendente |
 
-```text
-http://localhost:5273/swagger
-```
+**Valores validos para `ordenacao`:** `PorData`, `PorPrioridade`, `PorTitulo`, `ApenasAtrasadas`, `ApenasConcluidas`.
 
-### Endpoints Principais
-
-- `GET /api/tarefas`
-- `GET /api/tarefas/{id}`
-- `GET /api/tarefas?status=Pendente`
-- `GET /api/tarefas?status=Concluida`
-- `POST /api/tarefas`
-- `PUT /api/tarefas/{id}`
-- `DELETE /api/tarefas/{id}`
-- `PATCH /api/tarefas/{id}/concluir`
-- `PATCH /api/tarefas/{id}/reabrir`
+---
 
 ## Frontend
 
-O frontend e uma aplicacao React desenvolvida com Vite. Ele consome a API do backend e apresenta as tarefas como sticky notes, permitindo interacao visual com os registros.
+### Tecnologias
 
-### Tecnologias do Frontend
-
-- React
-- Vite
+- React / Vite
 - JavaScript
 - CSS
-- Fetch API
-- LocalStorage
+- Fetch API / LocalStorage
 
 ### Funcionalidades Visuais
 
-- Criacao e edicao de tarefas por formulario.
-- Cards em formato de sticky note.
-- Cores personalizaveis por card.
-- Movimentacao livre dos cards.
-- Salvamento local da posicao dos cards.
-- Salvamento local da cor dos cards.
-- Destaque para tarefas vencidas.
-- Tooltip/aviso para datas vencidas ou vencendo no dia atual.
+- Cards em formato de sticky note com cores personalizaveis.
+- Movimentacao livre dos cards com posicao salva em `localStorage`.
+- Botoes de acao por estado: Pausar, Retomar, Concluir, Reabrir.
+- Badge visual automatico para tarefas vencidas.
 - Filtros e contadores de tarefas.
+- Formulario de criacao e edicao.
 
 ### Executar o Frontend
 
-Antes de iniciar o frontend, deixe o backend rodando em:
-
-```text
-http://localhost:5273
-```
-
-Depois, em outro terminal, execute:
+Com o backend rodando em `http://localhost:5273`:
 
 ```powershell
 cd taskflow-frontend
@@ -183,95 +355,28 @@ npm install
 npm run dev
 ```
 
-Acesse no navegador:
+Acesse em `http://localhost:5173`.
 
-```text
-http://localhost:5173
-```
-
-### Build do Frontend
-
-```powershell
-cd taskflow-frontend
-npm run build
-```
+---
 
 ## Como Executar o Projeto Completo
 
-1. Abrir um terminal para o backend:
-
 ```powershell
+# Terminal 1 — backend
 cd taskflow-backend
 dotnet run --project TaskFlow.API
-```
 
-2. Abrir outro terminal para o frontend:
-
-```powershell
+# Terminal 2 — frontend
 cd taskflow-frontend
 npm install
 npm run dev
 ```
 
-3. Acessar a aplicacao:
+Acesse `http://localhost:5173`. Swagger em `http://localhost:5273/swagger`.
 
-```text
-http://localhost:5173
-```
-
-4. Opcionalmente, acessar o Swagger:
-
-```text
-http://localhost:5273/swagger
-```
-
-## O Que o MVP Entrega
-
-O MVP permite demonstrar o fluxo principal do sistema:
-
-1. Criar uma tarefa academica.
-2. Persistir a tarefa no banco SQLite.
-3. Listar as tarefas cadastradas.
-4. Exibir as tarefas no frontend em formato de sticky note.
-5. Editar dados da tarefa.
-6. Filtrar por status.
-7. Marcar como concluida ou reabrir.
-8. Excluir tarefa.
-9. Personalizar cor e posicao visual dos cards.
-
-## Dificuldades Encontradas
-
-- Definir um escopo pequeno o suficiente para a primeira entrega.
-- Integrar frontend e backend mantendo as rotas consistentes.
-- Separar regra de negocio no servico de dominio e orquestracao na camada de aplicacao.
-- Configurar injecao de dependencia entre API, aplicacao, dominio e repositorio.
-- Manter a organizacao visual dos sticky notes sem sobreposicao inicial.
-- Guardar preferencias visuais no navegador usando `localStorage`.
-- Visualizar e conferir os dados persistidos no SQLite durante o desenvolvimento.
-
-## Pontos Dificeis de Manter ou Expandir
-
-- A logica de posicionamento dos sticky notes pode ficar mais complexa com muitas tarefas.
-- Cores e posicoes ficam no `localStorage`, entao nao sao compartilhadas entre dispositivos.
-- O componente visual dos cards pode concentrar muitas responsabilidades se novas interacoes forem adicionadas.
-- O backend ainda pode evoluir com testes automatizados e migrations do Entity Framework.
-- A aplicacao nao possui autenticacao nem separacao de tarefas por usuario.
-- Validacoes de entrada podem ser melhoradas no frontend e no backend.
-
-## Possiveis Evolucoes Futuras
-
-- Autenticacao de usuarios.
-- Separacao de tarefas por usuario, turma ou disciplina.
-- Calendario de entregas.
-- Notificacoes de prazos proximos.
-- Persistencia das posicoes e cores dos cards no backend.
-- Melhorias de responsividade para telas pequenas.
-- Testes automatizados.
-- Refatoracao para separar melhor estado visual, regras de negocio e componentes.
+---
 
 ## Uso de IA Generativa
 
-Ferramentas de IA generativa utilizadas:
-
-- Codex / OpenAI ChatGPT: apoio em implementacao, organizacao do codigo, correcoes, README e revisoes.
-- Claude / Code Anthropic: apoio na criacao base do codigo.
+- Claude Code (Anthropic): apoio na implementacao dos Design Patterns, refatoracao arquitetural e atualizacao do README.
+- ChatGPT (OpenAI): apoio na implementacao base, organizacao do codigo e revisoes.
