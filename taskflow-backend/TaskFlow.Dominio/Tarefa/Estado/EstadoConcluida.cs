@@ -9,19 +9,19 @@ public sealed class EstadoConcluida : IEstadoTarefa
         get { return EnumStatusTarefa.Concluida; }
     }
 
-    public IEstadoTarefa Iniciar()
+    public IEstadoTarefa Pausar()
     {
-        throw new RegraDeNegocioException("A tarefa ja foi concluida.");
+        throw new RegraDeNegocioException("Nao e possivel pausar uma tarefa ja concluida.");
+    }
+
+    public IEstadoTarefa Retomar()
+    {
+        throw new RegraDeNegocioException("Nao e possivel retomar uma tarefa ja concluida.");
     }
 
     public IEstadoTarefa Concluir()
     {
         throw new RegraDeNegocioException("A tarefa ja foi concluida.");
-    }
-
-    public IEstadoTarefa Cancelar()
-    {
-        throw new RegraDeNegocioException("Nao e possivel cancelar uma tarefa ja concluida.");
     }
 
     public IEstadoTarefa Reabrir()

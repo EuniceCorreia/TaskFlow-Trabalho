@@ -42,30 +42,32 @@ public class Tarefa
         AtualizadaEm = DateTime.UtcNow;
     }
 
-    private IEstadoTarefa ObterEstadoAtual() => Status switch
+    private IEstadoTarefa ObterEstadoAtual()
     {
-        EnumStatusTarefa.Pendente => new EstadoPendente(),
-        EnumStatusTarefa.EmAndamento => new EstadoEmAndamento(),
-        EnumStatusTarefa.Concluida => new EstadoConcluida(),
-        EnumStatusTarefa.Cancelada => new EstadoCancelada(),
-        _ => throw new InvalidOperationException($"Status desconhecido: {Status}")
-    };
+        return Status switch
+        {
+            EnumStatusTarefa.Pendente => new EstadoPendente(),
+            EnumStatusTarefa.Pausada => new EstadoPausada(),
+            EnumStatusTarefa.Concluida => new EstadoConcluida(),
+            _ => throw new InvalidOperationException($"Status desconhecido: {Status}")
+        };
+    }
 
-    public void Iniciar()
+    public void Pausar()
     {
-        Status = ObterEstadoAtual().Iniciar().Status;
+        Status = ObterEstadoAtual().Pausar().Status;
+        AtualizadaEm = DateTime.UtcNow;
+    }
+
+    public void Retomar()
+    {
+        Status = ObterEstadoAtual().Retomar().Status;
         AtualizadaEm = DateTime.UtcNow;
     }
 
     public void Concluir()
     {
         Status = ObterEstadoAtual().Concluir().Status;
-        AtualizadaEm = DateTime.UtcNow;
-    }
-
-    public void Cancelar()
-    {
-        Status = ObterEstadoAtual().Cancelar().Status;
         AtualizadaEm = DateTime.UtcNow;
     }
 

@@ -38,7 +38,14 @@ public static class TarefasControllerStatusCodes
     [ProducesResponseType(typeof(TarefaDto), StatusCodes.Status200OK)]
     [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status400BadRequest)]
     [ProducesResponseType(StatusCodes.Status404NotFound)]
-    public static void Iniciar()
+    public static void Pausar()
+    {
+    }
+
+    [ProducesResponseType(typeof(TarefaDto), StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    public static void Retomar()
     {
     }
 
@@ -46,13 +53,6 @@ public static class TarefasControllerStatusCodes
     [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status400BadRequest)]
     [ProducesResponseType(StatusCodes.Status404NotFound)]
     public static void Concluir()
-    {
-    }
-
-    [ProducesResponseType(typeof(TarefaDto), StatusCodes.Status200OK)]
-    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status400BadRequest)]
-    [ProducesResponseType(StatusCodes.Status404NotFound)]
-    public static void Cancelar()
     {
     }
 

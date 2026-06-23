@@ -61,10 +61,17 @@ public sealed class TarefasController : ControllerBase
         return excluida ? NoContent() : NotFound();
     }
 
-    [HttpPatch("{id:int}/iniciar")]
-    public async Task<ActionResult<TarefaDto>> Iniciar(int id, CancellationToken cancellationToken)
+    [HttpPatch("{id:int}/pausar")]
+    public async Task<ActionResult<TarefaDto>> Pausar(int id, CancellationToken cancellationToken)
     {
-        var tarefa = await _tarefaAplic.IniciarAsync(id, cancellationToken);
+        var tarefa = await _tarefaAplic.PausarAsync(id, cancellationToken);
+        return tarefa is null ? NotFound() : Ok(tarefa);
+    }
+
+    [HttpPatch("{id:int}/retomar")]
+    public async Task<ActionResult<TarefaDto>> Retomar(int id, CancellationToken cancellationToken)
+    {
+        var tarefa = await _tarefaAplic.RetomarAsync(id, cancellationToken);
         return tarefa is null ? NotFound() : Ok(tarefa);
     }
 
@@ -72,13 +79,6 @@ public sealed class TarefasController : ControllerBase
     public async Task<ActionResult<TarefaDto>> Concluir(int id, CancellationToken cancellationToken)
     {
         var tarefa = await _tarefaAplic.ConcluirAsync(id, cancellationToken);
-        return tarefa is null ? NotFound() : Ok(tarefa);
-    }
-
-    [HttpPatch("{id:int}/cancelar")]
-    public async Task<ActionResult<TarefaDto>> Cancelar(int id, CancellationToken cancellationToken)
-    {
-        var tarefa = await _tarefaAplic.CancelarAsync(id, cancellationToken);
         return tarefa is null ? NotFound() : Ok(tarefa);
     }
 

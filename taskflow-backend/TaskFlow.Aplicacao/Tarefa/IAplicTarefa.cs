@@ -10,8 +10,8 @@ public interface ITarefaAplic
     Task<TarefaDto> CriarAsync(TarefaCriarDto dto, CancellationToken cancellationToken = default);
     Task<TarefaDto?> AtualizarAsync(int id, TarefaAtualizarDto dto, CancellationToken cancellationToken = default);
     Task<bool> ExcluirAsync(int id, CancellationToken cancellationToken = default);
-    Task<TarefaDto?> IniciarAsync(int id, CancellationToken cancellationToken = default);
+    Task<TarefaDto?> PausarAsync(int id, CancellationToken cancellationToken = default);
+    Task<TarefaDto?> RetomarAsync(int id, CancellationToken cancellationToken = default);
     Task<TarefaDto?> ConcluirAsync(int id, CancellationToken cancellationToken = default);
-    Task<TarefaDto?> CancelarAsync(int id, CancellationToken cancellationToken = default);
     Task<TarefaDto?> ReabrirAsync(int id, CancellationToken cancellationToken = default);
 }

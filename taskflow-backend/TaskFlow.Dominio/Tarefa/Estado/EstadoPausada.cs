@@ -2,21 +2,21 @@ using TaskFlow.Dominio.Excecoes;
 
 namespace TaskFlow.Dominio.Classe.Estado;
 
-public sealed class EstadoPendente : IEstadoTarefa
+public sealed class EstadoPausada : IEstadoTarefa
 {
     public EnumStatusTarefa Status
     {
-        get { return EnumStatusTarefa.Pendente; }
+        get { return EnumStatusTarefa.Pausada; }
     }
 
     public IEstadoTarefa Pausar()
     {
-        return new EstadoPausada();
+        throw new RegraDeNegocioException("A tarefa ja esta pausada.");
     }
 
     public IEstadoTarefa Retomar()
     {
-        throw new RegraDeNegocioException("A tarefa ainda nao esta pausada.");
+        return new EstadoPendente();
     }
 
     public IEstadoTarefa Concluir()
@@ -26,6 +26,6 @@ public sealed class EstadoPendente : IEstadoTarefa
 
     public IEstadoTarefa Reabrir()
     {
-        throw new RegraDeNegocioException("A tarefa ja esta pendente.");
+        throw new RegraDeNegocioException("A tarefa nao foi concluida.");
     }
 }

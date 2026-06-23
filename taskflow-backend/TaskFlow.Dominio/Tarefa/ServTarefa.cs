@@ -76,12 +76,12 @@ namespace TaskFlow.Dominio.Serv
             }
         }
 
-        public void Iniciar(Tarefa tarefa) => tarefa.Iniciar();
+        public void Pausar(Tarefa tarefa) { tarefa.Pausar(); }
 
-        public void Concluir(Tarefa tarefa) => tarefa.Concluir();
+        public void Retomar(Tarefa tarefa) { tarefa.Retomar(); }
 
-        public void Cancelar(Tarefa tarefa) => tarefa.Cancelar();
+        public void Concluir(Tarefa tarefa) { tarefa.Concluir(); }
 
-        public void Reabrir(Tarefa tarefa) => tarefa.Reabrir();
+        public void Reabrir(Tarefa tarefa) { tarefa.Reabrir(); }
     }
 }

@@ -8,9 +8,9 @@ namespace TaskFlow.Dominio.IServ
 
         Task AtualizarAsync(Tarefa tarefa, string titulo, string descricao, string disciplina, EnumPrioridadeTarefa prioridade, DateTime dataEntrega, CancellationToken cancellationToken = default);
 
-        void Iniciar(Tarefa tarefa);
+        void Pausar(Tarefa tarefa);
+        void Retomar(Tarefa tarefa);
         void Concluir(Tarefa tarefa);
-        void Cancelar(Tarefa tarefa);
         void Reabrir(Tarefa tarefa);
     }
 }

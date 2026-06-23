@@ -34,16 +34,12 @@ public sealed class TarefaAplic : ITarefaAplic
     {
         var tarefas = await _tarefaRep.ListarAsync(status, cancellationToken);
 
-        // Strategy: aplica ordenacao/filtro se solicitado
         var strategy = FiltroTarefaStrategyFactory.Criar(ordenacao);
         IEnumerable<Tarefa> resultado = strategy is not null
             ? strategy.Aplicar(tarefas)
             : tarefas;
 
-        // Observer: verifica vencimento das tarefas ativas
-        foreach (var tarefa in resultado.Where(t =>
-            t.Status != EnumStatusTarefa.Concluida &&
-            t.Status != EnumStatusTarefa.Cancelada))
+        foreach (var tarefa in resultado.Where(t => t.Status != EnumStatusTarefa.Concluida))
         {
             VerificarVencimento(tarefa);
         }
@@ -107,7 +103,7 @@ public sealed class TarefaAplic : ITarefaAplic
         return true;
     }
 
-    public async Task<TarefaDto?> IniciarAsync(int id, CancellationToken cancellationToken = default)
+    public async Task<TarefaDto?> PausarAsync(int id, CancellationToken cancellationToken = default)
     {
         var tarefa = await _tarefaRep.ObterPorIdAsync(id, cancellationToken);
         if (tarefa is null)
@@ -115,11 +111,26 @@ public sealed class TarefaAplic : ITarefaAplic
             return null;
         }
 
-        _tarefaServ.Iniciar(tarefa);
+        _tarefaServ.Pausar(tarefa);
         _tarefaRep.Atualizar(tarefa);
         await _tarefaRep.SalvarAlteracoesAsync(cancellationToken);
 
-        VerificarVencimento(tarefa);
+        _gerenciadorNotificacoes.Notificar(tarefa, EventoTarefa.Pausada);
+
+        return _mapperTarefa.Mapear(tarefa);
+    }
+
+    public async Task<TarefaDto?> RetomarAsync(int id, CancellationToken cancellationToken = default)
+    {
+        var tarefa = await _tarefaRep.ObterPorIdAsync(id, cancellationToken);
+        if (tarefa is null)
+        {
+            return null;
+        }
+
+        _tarefaServ.Retomar(tarefa);
+        _tarefaRep.Atualizar(tarefa);
+        await _tarefaRep.SalvarAlteracoesAsync(cancellationToken);
 
         return _mapperTarefa.Mapear(tarefa);
     }
@@ -137,23 +148,6 @@ public sealed class TarefaAplic : ITarefaAplic
         await _tarefaRep.SalvarAlteracoesAsync(cancellationToken);
 
         _gerenciadorNotificacoes.Notificar(tarefa, EventoTarefa.Concluida);
-
-        return _mapperTarefa.Mapear(tarefa);
-    }
-
-    public async Task<TarefaDto?> CancelarAsync(int id, CancellationToken cancellationToken = default)
-    {
-        var tarefa = await _tarefaRep.ObterPorIdAsync(id, cancellationToken);
-        if (tarefa is null)
-        {
-            return null;
-        }
-
-        _tarefaServ.Cancelar(tarefa);
-        _tarefaRep.Atualizar(tarefa);
-        await _tarefaRep.SalvarAlteracoesAsync(cancellationToken);
-
-        _gerenciadorNotificacoes.Notificar(tarefa, EventoTarefa.Cancelada);
 
         return _mapperTarefa.Mapear(tarefa);
     }
@@ -177,8 +171,12 @@ public sealed class TarefaAplic : ITarefaAplic
     {
         var diasRestantes = (tarefa.DataEntrega.Date - DateTime.UtcNow.Date).TotalDays;
         if (diasRestantes < 0)
+        {
             _gerenciadorNotificacoes.Notificar(tarefa, EventoTarefa.Atrasada);
+        }
         else if (diasRestantes <= 2)
+        {
             _gerenciadorNotificacoes.Notificar(tarefa, EventoTarefa.ProximaDoVencimento);
+        }
     }
 }
