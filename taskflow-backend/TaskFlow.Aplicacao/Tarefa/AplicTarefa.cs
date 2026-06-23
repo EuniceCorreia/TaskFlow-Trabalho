@@ -34,9 +34,9 @@ public sealed class TarefaAplic : ITarefaAplic
     {
         var tarefas = await _tarefaRep.ListarAsync(status, cancellationToken);
 
-        var strategy = FiltroTarefaStrategyFactory.Criar(ordenacao);
-        IEnumerable<Tarefa> resultado = strategy is not null
-            ? strategy.Aplicar(tarefas)
+        var factory = FiltroTarefaFactory.ObterFactory(ordenacao);
+        IEnumerable<Tarefa> resultado = factory is not null
+            ? factory.CriarStrategy().Aplicar(tarefas)
             : tarefas;
 
         foreach (var tarefa in resultado.Where(t => t.Status != EnumStatusTarefa.Concluida))

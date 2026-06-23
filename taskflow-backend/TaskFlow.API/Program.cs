@@ -1,6 +1,7 @@
 using System.Text.Json.Serialization;
 using Microsoft.EntityFrameworkCore;
 using TaskFlow.Aplicacao;
+using TaskFlow.API.Facade;
 using TaskFlow.API.Middlewares;
 using TaskFlow.Aplicacao.Aplic;
 using TaskFlow.Aplicacao.IAplic;
@@ -29,6 +30,7 @@ builder.Services.AddScoped<ITarefaRep, TarefaRep>();
 builder.Services.AddScoped<ITarefaServ, TarefaServ>();
 builder.Services.AddScoped<IMapperTarefa, MapperTarefa>();
 builder.Services.AddScoped<ITarefaAplic, TarefaAplic>();
+builder.Services.AddScoped<ITarefaFacade, TarefaFacade>();
 
 // Observer: registra os observadores e o gerenciador
 builder.Services.AddScoped<IObservadorTarefa, NotificacaoTelaObservador>();
