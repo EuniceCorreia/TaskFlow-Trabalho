@@ -1,0 +1,3 @@
+# Use só para falso positivo ou CVE sem correção, sempre com justificativa e prazo.
+# Exemplo:
+# CVE-2025-00000  # sem correção na imagem base; revisar até 30/11

@@ -1,12 +1,147 @@
 ﻿# TaskFlow
 
-Sistema de gerenciamento de tarefas academicas desenvolvido como projeto final da disciplina.
+Sistema de gerenciamento de tarefas academicas. O projeto foi desenvolvido inicialmente na disciplina de **Design Patterns** (Projetos Finais 01 e 02) e reaproveitado na disciplina de **DevOps**, onde recebeu uma pipeline DevSecOps completa: build, analise de qualidade, analise de seguranca, publicacao da imagem e deploy em um cluster Kubernetes (kind).
 
 ## Integrantes
+
+**DevOps (Pipeline DevSecOps)**
+
+- Eunice Correia
+- Janaina Carlos
+- Maria Laura
+- Vitoria Viana
+
+**Design Patterns (Projetos Finais 01 e 02)**
 
 - Eunice Correia
 - Maria Laura
 - Vitoria Viana
+
+---
+
+## Projeto DevOps: Pipeline DevSecOps
+
+Nesta etapa o codigo do TaskFlow foi mantido e o foco passou a ser a entrega automatizada. Foi construida uma pipeline no GitHub Actions que leva o codigo do commit ate o cluster kind, com analise de qualidade (SonarQube) e de seguranca (Trivy) bloqueando o deploy quando encontram problemas.
+
+### Fluxo da Pipeline
+
+```
+git push na main
+   |
+   ├─▶ 1. Build ──▶ 3. Trivy ──┐
+   |                           ├─▶ 4. Push ──▶ 5. Deploy (kind)
+   └─▶ 2. Sonar ───────────────┘
+```
+
+Build e Sonar rodam em paralelo. O Trivy analisa as imagens geradas no Build. O **Push so acontece se Sonar e Trivy passarem**, e o Deploy so acontece depois do Push. Assim, nenhuma imagem reprovada chega ao Docker Hub nem ao cluster (shift left da seguranca).
+
+### Etapas
+
+| Etapa | O que faz | Onde roda |
+|---|---|---|
+| 1. Build | Gera as imagens Docker do frontend (React + nginx) e do backend (.NET 10), marcadas com o SHA do commit | GitHub (Linux) |
+| 2. Sonar | Lint (ESLint), testes com cobertura (Vitest) e analise no SonarQube Cloud: bugs, vulnerabilidades e code smells. Falha se o Quality Gate reprovar | GitHub (Linux) |
+| 3. Trivy | Analisa o codigo (dependencias, segredos expostos, Dockerfiles e manifests Kubernetes) e as duas imagens. Falha com vulnerabilidades HIGH ou CRITICAL que tenham correcao | GitHub (Linux) |
+| 4. Push | Publica as imagens aprovadas no Docker Hub (tag do commit e `latest`) | GitHub (Linux) |
+| 5. Deploy | Aplica os manifests no cluster kind usando as imagens do Docker Hub e confere se o frontend e a API respondem | Self-hosted runner (Windows) |
+
+### Ferramentas
+
+- **GitHub Actions**: orquestracao da pipeline (`.github/workflows/devsecops.yml`).
+- **Docker**: imagens multi-stage para frontend e backend.
+- **SonarQube Cloud**: analise estatica e Quality Gate do frontend.
+- **Vitest + ESLint**: testes automatizados e padrao de codigo do frontend.
+- **Trivy**: scan de vulnerabilidades, segredos e configuracoes inseguras.
+- **Docker Hub**: registro das imagens (`taskflow-frontend` e `taskflow-backend`).
+- **kind (Kubernetes in Docker)**: cluster Kubernetes local onde a aplicacao roda.
+- **GitHub Self-hosted Runner**: executa o deploy na maquina onde o cluster kind esta.
+
+### Relatorios
+
+- **SonarQube Cloud**: painel do projeto `EuniceCorreia_TaskFlow-Trabalho`.
+- **GitHub → aba Security → Code scanning**: resultados do Trivy (codigo, imagem frontend e imagem backend) em formato SARIF.
+- **Artefato `relatorios-trivy`**: relatorios em texto e SARIF anexados a cada execucao da pipeline.
+
+### Seguranca Aplicada (DevSecOps)
+
+- Permissoes minimas do `GITHUB_TOKEN` (`contents: read`). Apenas o job do Trivy recebe permissao extra para enviar relatorios.
+- Credenciais em **secrets** (`DOCKERHUB_TOKEN`, `SONAR_TOKEN`) e dados nao sensiveis em **variables** (`DOCKERHUB_USERNAME`). Nenhuma senha no codigo.
+- Docker Hub acessado por **access token**, e nao pela senha da conta.
+- Containers rodando **sem root**: nginx com usuario 101 e .NET com usuario 1654.
+- Manifests Kubernetes com sistema de arquivos **somente leitura**, sem escalada de privilegio, sem capabilities do Linux e com limites de CPU e memoria.
+- Imagens finais enxutas: o frontend leva apenas os arquivos compilados no nginx e o backend usa a imagem runtime Alpine, sem SDK nem codigo-fonte.
+- Versao do Trivy fixada (`aquasecurity/trivy-action@v0.36.0`) em vez de `@master`, como protecao contra ataques a cadeia de suprimentos.
+- Deploy executado apenas a partir da branch `main`.
+
+### Arquitetura no Cluster
+
+```
+Navegador → localhost:8080
+      |
+      v
+Service taskflow-frontend (NodePort 30080)
+      |
+      v
+Pods do frontend (nginx, 2 replicas)
+   ├── /       → arquivos do React
+   └── /api/*  → Service taskflow-backend:8080
+                       |
+                       v
+               Pod do backend (.NET 10, 1 replica)
+                       |
+                       v
+               PersistentVolumeClaim (SQLite em /data)
+```
+
+O backend usa 1 replica com estrategia `Recreate` porque o SQLite aceita apenas um processo gravando por vez. O banco fica em um volume persistente e sobrevive a novos deploys. Ele e separado do banco local de desenvolvimento.
+
+### Configuracao Necessaria
+
+**GitHub (Settings → Secrets and variables → Actions)**
+
+| Tipo | Nome | Conteudo |
+|---|---|---|
+| Secret | `DOCKERHUB_TOKEN` | Access token do Docker Hub (Read & Write) |
+| Secret | `SONAR_TOKEN` | Token do SonarQube Cloud |
+| Variable | `DOCKERHUB_USERNAME` | Usuario do Docker Hub |
+
+**SonarQube Cloud**: projeto importado e **Analise Automatica desligada** (a analise e feita pela pipeline).
+
+**Maquina do deploy (Windows com Docker Desktop, kind e kubectl)**
+
+```powershell
+# Criar o cluster com a porta 8080 mapeada
+kind create cluster --config kind-config.yaml
+
+# Liberar scripts locais para os passos em PowerShell do runner
+Set-ExecutionPolicy -Scope CurrentUser RemoteSigned
+```
+
+Registrar o self-hosted runner em Settings → Actions → Runners → New self-hosted runner (Windows), com o label `kind`, e manter o `run.cmd` em execucao.
+
+### Executar a Pipeline
+
+Qualquer push na `main` dispara a pipeline. Ela tambem pode ser executada manualmente em Actions → DevSecOps Pipeline → Run workflow.
+
+Depois do deploy:
+
+- Aplicacao: `http://localhost:8080`
+- API pelo frontend: `http://localhost:8080/api/tarefas`
+
+Comandos uteis para conferir o cluster:
+
+```powershell
+kubectl get deploy,pods,svc,pvc
+kubectl logs deployment/taskflow-backend --tail 20
+kubectl get deploy taskflow-frontend -o jsonpath="{.spec.template.spec.containers[0].image}"
+```
+
+### Ajustes de Qualidade Feitos no Codigo
+
+- Criados 21 testes automatizados para `src/api/tarefas.js`, com 100% de cobertura nesse modulo.
+- Corrigidos dois erros do ESLint (`react-hooks/set-state-in-effect`):
+  - `TarefaForm.jsx`: o estado do formulario passou a ser inicializado a partir da tarefa (`formInicial`), sem `useEffect`.
+  - `App.jsx`: a funcao `carregar` passou a usar `.then/.catch/.finally`. Isso tambem eliminou o efeito de "piscar" do quadro a cada acao.
 
 ---
 
@@ -55,7 +190,7 @@ IEstadoTarefa
 
 **Justificativa tecnica:** as regras de cada estado ficam isoladas em classes proprias. A entidade `Tarefa` delega a validacao da operacao para o estado atual, em vez de concentrar todas as transicoes em blocos de `if/else`.
 
-**Impacto:** eliminacao das condicionais de validacao de transicao dentro dos metodos `Pausar`, `Retomar`, `Concluir` e `Reabrir`. Erros de transicao invalida lancam `RegraDeNegocioException` com mensagem clara.
+**Impacto:** eliminacao das condicionais de validacao de transicao dentro dos metodos `Pausar`, `Retomar`, `Concluir`e `Reabrir`. Erros de transicao invalida lancam `RegraDeNegocioException` com mensagem clara.
 
 **Limitacao atual:** a entidade ainda possui o metodo `ObterEstadoAtual()`, que usa um `switch` para associar o enum persistido a uma implementacao de `IEstadoTarefa`. Portanto, adicionar um novo estado exige criar sua classe e registrar esse estado nesse metodo, mas nao exige modificar as regras internas dos estados existentes.
 
@@ -101,7 +236,7 @@ IObservadorTarefa
 
 **Justificativa tecnica:** adicionar um novo canal, como push mobile ou SMS, exige criar uma classe que implemente `IObservadorTarefa` e registra-la no container de injecao de dependencia. O caso de uso nao precisa conhecer a classe concreta do novo canal.
 
-**Impacto:** reducao significativa do acoplamento entre quem publica o evento e os canais concretos que reagem a ele. `TarefaAplic` ainda conhece `IGerenciadorNotificacoes` e decide quando publicar cada `EventoTarefa`, mas nao depende de `EmailObservador`, `LogSistemaObservador` ou `NotificacaoTelaObservador`.
+**Impacto:** reducao significativa do acoplamento entre quem publica o evento e os canais concretos que reagem a ele.`TarefaAplic` ainda conhece `IGerenciadorNotificacoes` e decide quando publicar cada `EventoTarefa`, mas nao depende de `EmailObservador`, `LogSistemaObservador` ou `NotificacaoTelaObservador`.
 
 **Observacao sobre a implementacao atual:** `EmailObservador` simula o envio por meio de log. `NotificacaoTelaObservador` tambem registra uma mensagem no log do backend; ele nao envia diretamente a notificacao para o React. As notificacoes visuais do frontend sao montadas pelo proprio frontend a partir das tarefas carregadas.
 
@@ -126,7 +261,7 @@ FiltroTarefaFactory (abstract)
 └── FiltragemFactory  → ApenasAtrasadas, ApenasConcluidas
 ```
 
-**Justificativa tecnica:** o metodo abstrato `CriarStrategy()` define o ponto de criacao, enquanto `OrdenacaoFactory` e `FiltragemFactory` decidem quais Strategies concretas podem criar. Assim, a criacao fica separada do uso realizado por `TarefaAplic`.
+**Justificativa tecnica:** o metodo abstrato `CriarStrategy()` define o ponto de criacao, enquanto `OrdenacaoFactory`e `FiltragemFactory` decidem quais Strategies concretas podem criar. Assim, a criacao fica separada do uso realizado por `TarefaAplic`.
 
 **Impacto:** separacao entre os grupos de ordenacao e filtragem e retirada da instanciacao direta de Strategies da camada de aplicacao.
 
@@ -136,7 +271,7 @@ FiltroTarefaFactory (abstract)
 
 #### 5. Facade — Estrutural
 
-**Problema resolvido:** `TarefasController` dependia diretamente de `ITarefaAplic` e precisava conhecer separadamente todos os casos de uso, incluindo quatro operacoes de transicao de estado. A camada HTTP ficava diretamente ligada ao contrato completo da aplicacao.
+**Problema resolvido:** `TarefasController` dependia diretamente de `ITarefaAplic` e precisava conhecer separadamentetodos os casos de uso, incluindo quatro operacoes de transicao de estado. A camada HTTP ficava diretamente ligada ao contrato completo da aplicacao.
 
 **Solucao anterior inadequada:**
 ```csharp
@@ -220,7 +355,7 @@ O MVP inicial entregou um sistema funcional de ponta a ponta com:
 
 ## Problema e Dominio
 
-Estudantes precisam acompanhar varias tarefas academicas ao mesmo tempo, cada uma com disciplina, prazo, prioridade e status diferente. Sem uma organizacao visual simples, e facil perder prazos ou esquecer atividades importantes.
+Estudantes precisam acompanhar varias tarefas academicas ao mesmo tempo, cada uma com disciplina, prazo, prioridade estatus diferente. Sem uma organizacao visual simples, e facil perder prazos ou esquecer atividades importantes.
 
 O dominio do TaskFlow e o gerenciamento de tarefas academicas. Cada tarefa possui titulo, descricao, disciplina, prioridade, data de entrega e status.
 
@@ -244,25 +379,41 @@ O dominio do TaskFlow e o gerenciamento de tarefas academicas. Cada tarefa possu
 
 ```text
 TaskFlow-Trabalho/
+├── .github/
+│   └── workflows/
+│       └── devsecops.yml        ← Pipeline DevSecOps (DevOps)
+├── k8s/                         ← Manifests Kubernetes (DevOps)
+│   ├── backend-deployment.yaml
+│   ├── backend-pvc.yaml
+│   ├── backend-service.yaml
+│   ├── frontend-deployment.yaml
+│   └── frontend-service.yaml
 ├── taskflow-backend/
+│   ├── Dockerfile               ← Imagem do backend (DevOps)
 │   ├── TaskFlow.API/
 │   │   ├── Controllers/
-│   │   ├── Facade/              ← Facade (novo)
+│   │   ├── Facade/              ← Facade
 │   │   ├── Convencoes/
 │   │   └── Middlewares/
 │   ├── TaskFlow.Aplicacao/
 │   │   ├── Tarefa/
-│   │   └── Observadores/        ← Observer (novo)
+│   │   └── Observadores/        ← Observer
 │   ├── TaskFlow.Dominio/
 │   │   ├── Tarefa/
-│   │   │   └── Estado/          ← State (novo)
-│   │   ├── Filtros/             ← Strategy + Factory Method (novo)
+│   │   │   └── Estado/          ← State
+│   │   ├── Filtros/             ← Strategy + Factory Method
 │   │   └── Observadores/
 │   ├── TaskFlow.Repositorio/
 │   └── TaskFlow.sln
 ├── taskflow-frontend/
+│   ├── Dockerfile               ← Imagem do frontend (DevOps)
+│   ├── nginx.conf               ← Servidor web e proxy /api (DevOps)
+│   ├── sonar-project.properties ← Configuracao do SonarQube (DevOps)
 │   ├── src/
+│   │   └── api/tarefas.test.js  ← Testes automatizados (DevOps)
 │   └── package.json
+├── kind-config.yaml             ← Cluster kind com porta 8080 (DevOps)
+├── .trivyignore                 ← Excecoes justificadas do Trivy (DevOps)
 └── README.md
 ```
 
@@ -297,11 +448,13 @@ TaskFlow-Trabalho/
 
 ### Banco de Dados
 
-O backend utiliza SQLite. O arquivo gerado automaticamente pelo `EnsureCreatedAsync` e:
+O backend utiliza SQLite. Em desenvolvimento, o arquivo gerado automaticamente pelo `EnsureCreatedAsync` e:
 
 ```text
 taskflow-backend/TaskFlow.API/taskflow.db
 ```
+
+No container e no cluster, o caminho e definido pela variavel `ConnectionStrings__TaskFlow` (`/data/taskflow.db`). O arquivo `.db` local nao entra na imagem Docker.
 
 > Se o arquivo existir com dados do modelo anterior (com status `EmAndamento` ou `Cancelada`), delete-o antes de iniciar a API. O banco sera recriado automaticamente.
 
@@ -314,6 +467,15 @@ dotnet run --project TaskFlow.API
 ```
 
 API disponivel em `http://localhost:5273`. Swagger em `http://localhost:5273/swagger`.
+
+### Executar o Backend com Docker
+
+```powershell
+docker build -t taskflow-backend taskflow-backend
+docker run --rm -p 5080:8080 taskflow-backend
+```
+
+API disponivel em `http://localhost:5080/api/tarefas` (o Swagger fica desligado fora do ambiente de desenvolvimento).
 
 ### Endpoints
 
@@ -343,6 +505,7 @@ API disponivel em `http://localhost:5273`. Swagger em `http://localhost:5273/swa
 - JavaScript
 - CSS
 - Fetch API / LocalStorage
+- Vitest (testes) e ESLint (padrao de codigo)
 
 ### Funcionalidades Visuais
 
@@ -365,9 +528,19 @@ npm run dev
 
 Acesse em `http://localhost:5173`.
 
+### Testes e Lint
+
+```powershell
+cd taskflow-frontend
+npm run lint
+npm run test:coverage
+```
+
 ---
 
 ## Como Executar o Projeto Completo
+
+**Em desenvolvimento:**
 
 ```powershell
 # Terminal 1 — backend
@@ -382,10 +555,12 @@ npm run dev
 
 Acesse `http://localhost:5173`. Swagger em `http://localhost:5273/swagger`.
 
+**No cluster kind (via pipeline):** faca push na `main` e acompanhe em Actions. Ao final, acesse `http://localhost:8080`.
+
 ---
 
 ## Uso de IA Generativa
 
 - Claude Code (Anthropic): apoio na implementacao dos Design Patterns, refatoracao arquitetural e atualizacao do README.
+- Claude (Anthropic): apoio na construcao da pipeline DevSecOps (GitHub Actions, Dockerfiles, manifests Kubernetes, configuracao do SonarQube e do Trivy), nos testes automatizados, nas correcoes de lint.
 - ChatGPT (OpenAI): apoio na implementacao base, organizacao do codigo e revisoes.
-

@@ -108,17 +108,18 @@ export default function App() {
   const tarefaArrastadaRef = useRef(null);
   const deslocamentoArrasteRef = useRef({ x: 0, y: 0 });
 
-  const carregar = useCallback(async () => {
-    try {
-      setCarregando(true);
-      const dados = await api.listar(filtro || undefined, ordenacao || undefined);
-      setTarefas(dados);
-      setErro('');
-    } catch {
-      setErro('Não foi possível conectar ao servidor. Verifique se a API está rodando.');
-    } finally {
-      setCarregando(false);
-    }
+  const carregar = useCallback(() => {
+    return api.listar(filtro || undefined, ordenacao || undefined)
+      .then(dados => {
+        setTarefas(dados);
+        setErro('');
+      })
+      .catch(() => {
+        setErro('Não foi possível conectar ao servidor. Verifique se a API está rodando.');
+      })
+      .finally(() => {
+        setCarregando(false);
+      });
   }, [filtro, ordenacao]);
 
   const atualizarNotificacoes = useCallback(async () => {

@@ -10,4 +10,13 @@ export default defineConfig({
       '/api': 'http://localhost:5273',
     },
   },
+  test: {
+    environment: 'jsdom',
+    coverage: {
+      provider: 'v8',
+      reporter: ['text', 'lcov'],
+      include: ['src/**/*.{js,jsx}'],
+      exclude: ['src/main.jsx', 'src/**/*.test.{js,jsx}'],
+    },
+  },
 })

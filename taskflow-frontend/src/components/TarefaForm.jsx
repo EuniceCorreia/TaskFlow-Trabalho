@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
 
 const PRIORIDADES = ['Baixa', 'Media', 'Alta'];
 
@@ -10,22 +10,19 @@ const vazio = {
   dataEntrega: '',
 };
 
-export default function TarefaForm({ tarefaEditando, onSalvar, onCancelar }) {
-  const [form, setForm] = useState(vazio);
+function formInicial(tarefa) {
+  if (!tarefa) return vazio;
+  return {
+    titulo: tarefa.titulo,
+    descricao: tarefa.descricao,
+    disciplina: tarefa.disciplina,
+    prioridade: tarefa.prioridade,
+    dataEntrega: tarefa.dataEntrega.slice(0, 10),
+  };
+}
 
-  useEffect(() => {
-    if (tarefaEditando) {
-      setForm({
-        titulo: tarefaEditando.titulo,
-        descricao: tarefaEditando.descricao,
-        disciplina: tarefaEditando.disciplina,
-        prioridade: tarefaEditando.prioridade,
-        dataEntrega: tarefaEditando.dataEntrega.slice(0, 10),
-      });
-    } else {
-      setForm(vazio);
-    }
-  }, [tarefaEditando]);
+export default function TarefaForm({ tarefaEditando, onSalvar, onCancelar }) {
+  const [form, setForm] = useState(() => formInicial(tarefaEditando));
 
   function handleChange(e) {
     setForm({ ...form, [e.target.name]: e.target.value });

@@ -1,0 +1,272 @@
+name: DevSecOps Pipeline
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+# Permissão mínima por padrão
+permissions:
+  contents: read
+
+env:
+  # vars.DOCKERHUB_USERNAME = variável do repositório (em minúsculas)
+  IMAGE: ${{ vars.DOCKERHUB_USERNAME }}/taskflow-frontend
+  IMAGE_BACKEND: ${{ vars.DOCKERHUB_USERNAME }}/taskflow-backend
+  TAG: ${{ github.sha }}
+
+jobs:
+  # ────────────────────────────── 1. BUILD ──────────────────────────────
+  build:
+    name: 1. Build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build da imagem do frontend (React + nginx)
+        run: docker build -t "$IMAGE:$TAG" taskflow-frontend
+
+      - name: Build da imagem do backend (.NET 10)
+        run: docker build -t "$IMAGE_BACKEND:$TAG" taskflow-backend
+
+      - name: Salvar imagens para os próximos jobs
+        run: |
+          docker save "$IMAGE:$TAG" -o image-frontend.tar
+          docker save "$IMAGE_BACKEND:$TAG" -o image-backend.tar
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: docker-images
+          path: |
+            image-frontend.tar
+            image-backend.tar
+          retention-days: 1
+
+  # ────────────────────────────── 2. SONAR ──────────────────────────────
+  sonar:
+    name: 2. Sonar
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: taskflow-frontend
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0   # necessário para blame e new code
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: taskflow-frontend/package-lock.json
+
+      - run: npm ci
+
+      - name: Lint (ESLint)
+        run: npm run lint
+
+      - name: Testes com cobertura (gera coverage/lcov.info)
+        run: npm run test:coverage
+
+      - name: SonarQube Scan + Quality Gate
+        uses: SonarSource/sonarqube-scan-action@v8
+        with:
+          projectBaseDir: taskflow-frontend
+        env:
+          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+
+  # ────────────────────────────── 3. TRIVY ──────────────────────────────
+  trivy:
+    name: 3. Trivy
+    runs-on: ubuntu-latest
+    needs: build
+    permissions:
+      contents: read
+      security-events: write   # enviar SARIF para a aba Security
+      actions: read
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: docker-images
+
+      # Relatórios completos (não bloqueiam) -> aba Security
+      - name: Trivy código - relatório SARIF
+        uses: aquasecurity/trivy-action@v0.36.0
+        with:
+          scan-type: fs
+          scan-ref: .
+          scanners: vuln,secret,misconfig
+          format: sarif
+          output: trivy-fs.sarif
+
+      - name: Trivy imagem frontend - relatório SARIF
+        uses: aquasecurity/trivy-action@v0.36.0
+        with:
+          scan-type: image
+          input: image-frontend.tar
+          format: sarif
+          output: trivy-image-frontend.sarif
+
+      - name: Trivy imagem backend - relatório SARIF
+        uses: aquasecurity/trivy-action@v0.36.0
+        with:
+          scan-type: image
+          input: image-backend.tar
+          format: sarif
+          output: trivy-image-backend.sarif
+
+      - name: Enviar SARIF do código para GitHub Security
+        if: always()
+        uses: github/codeql-action/upload-sarif@v4
+        with:
+          sarif_file: trivy-fs.sarif
+          category: trivy-codigo
+
+      - name: Enviar SARIF da imagem frontend para GitHub Security
+        if: always()
+        uses: github/codeql-action/upload-sarif@v4
+        with:
+          sarif_file: trivy-image-frontend.sarif
+          category: trivy-imagem-frontend
+
+      - name: Enviar SARIF da imagem backend para GitHub Security
+        if: always()
+        uses: github/codeql-action/upload-sarif@v4
+        with:
+          sarif_file: trivy-image-backend.sarif
+          category: trivy-imagem-backend
+
+      # Gates (bloqueiam com HIGH/CRITICAL que tenham correção)
+      - name: Gate - código (dependências, secrets, Dockerfiles e k8s)
+        uses: aquasecurity/trivy-action@v0.36.0
+        with:
+          scan-type: fs
+          scan-ref: .
+          scanners: vuln,secret,misconfig
+          severity: HIGH,CRITICAL
+          ignore-unfixed: true
+          format: table
+          output: trivy-codigo.txt
+          exit-code: '1'
+
+      - name: Gate - imagem frontend
+        if: always()
+        uses: aquasecurity/trivy-action@v0.36.0
+        with:
+          scan-type: image
+          input: image-frontend.tar
+          severity: HIGH,CRITICAL
+          ignore-unfixed: true
+          format: table
+          output: trivy-imagem-frontend.txt
+          exit-code: '1'
+
+      - name: Gate - imagem backend
+        if: always()
+        uses: aquasecurity/trivy-action@v0.36.0
+        with:
+          scan-type: image
+          input: image-backend.tar
+          severity: HIGH,CRITICAL
+          ignore-unfixed: true
+          format: table
+          output: trivy-imagem-backend.txt
+          exit-code: '1'
+
+      - name: Mostrar relatórios no log
+        if: always()
+        run: |
+          echo "===== CÓDIGO ====="; cat trivy-codigo.txt || true
+          echo "===== IMAGEM FRONTEND ====="; cat trivy-imagem-frontend.txt || true
+          echo "===== IMAGEM BACKEND ====="; cat trivy-imagem-backend.txt || true
+
+      - name: Guardar relatórios como artefato
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: relatorios-trivy
+          path: |
+            trivy-*.txt
+            trivy-*.sarif
+
+  # ────────────────────────────── 4. PUSH ───────────────────────────────
+  push:
+    name: 4. Push
+    runs-on: ubuntu-latest
+    needs: [sonar, trivy]   # só publica se Sonar e Trivy passaram
+    if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: docker-images
+
+      - name: Carregar imagens
+        run: |
+          docker load -i image-frontend.tar
+          docker load -i image-backend.tar
+
+      - name: Login no Docker Hub
+        uses: docker/login-action@v3
+        with:
+          username: ${{ vars.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      - name: Push para o Docker Hub
+        run: |
+          for img in "$IMAGE" "$IMAGE_BACKEND"; do
+            docker tag "$img:$TAG" "$img:latest"
+            docker push "$img:$TAG"
+            docker push "$img:latest"
+          done
+
+  # ────────────────────────────── 5. DEPLOY ─────────────────────────────
+  deploy:
+    name: 5. Deploy (kind)
+    needs: push
+    runs-on: [self-hosted, kind]   # runner no Windows onde o kind está rodando
+    environment: production
+    defaults:
+      run:
+        shell: powershell
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Selecionar o cluster kind
+        run: |
+          kubectl config use-context kind-taskflow
+          if ($LASTEXITCODE -ne 0) { exit 1 }
+          kubectl cluster-info
+
+      - name: Deploy do backend
+        run: |
+          $imagem = "docker.io/$($env:IMAGE_BACKEND):$($env:TAG)"
+          Write-Host "Imagem backend: $imagem"
+          kubectl apply -f k8s/backend-pvc.yaml
+          if ($LASTEXITCODE -ne 0) { exit 1 }
+          kubectl apply -f k8s/backend-service.yaml
+          if ($LASTEXITCODE -ne 0) { exit 1 }
+          (Get-Content k8s/backend-deployment.yaml) -replace 'IMAGE_PLACEHOLDER', $imagem | kubectl apply -f -
+          if ($LASTEXITCODE -ne 0) { exit 1 }
+          kubectl rollout status deployment/taskflow-backend --timeout=180s
+
+      - name: Deploy do frontend
+        run: |
+          $imagem = "docker.io/$($env:IMAGE):$($env:TAG)"
+          Write-Host "Imagem frontend: $imagem"
+          kubectl apply -f k8s/frontend-service.yaml
+          if ($LASTEXITCODE -ne 0) { exit 1 }
+          (Get-Content k8s/frontend-deployment.yaml) -replace 'IMAGE_PLACEHOLDER', $imagem | kubectl apply -f -
+          if ($LASTEXITCODE -ne 0) { exit 1 }
+          kubectl rollout status deployment/taskflow-frontend --timeout=180s
+
+      - name: Conferir o deploy
+        run: |
+          kubectl get deploy,pods,svc,pvc -o wide
+          $pagina = Invoke-WebRequest -Uri http://localhost:8080 -UseBasicParsing
+          Write-Host "Frontend respondeu HTTP $($pagina.StatusCode)"
+          $api = Invoke-WebRequest -Uri http://localhost:8080/api/tarefas -UseBasicParsing
+          Write-Host "API via frontend respondeu HTTP $($api.StatusCode)"

@@ -1,0 +1,13 @@
+# Disco persistente para o SQLite: os dados sobrevivem a novos deploys
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: taskflow-backend-dados
+  labels:
+    app: taskflow-backend
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 200Mi

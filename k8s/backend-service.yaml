@@ -1,0 +1,15 @@
+# Nome usado pelo nginx do frontend para encaminhar /api.
+# Precisa existir antes do frontend subir (o nginx resolve esse nome ao iniciar).
+apiVersion: v1
+kind: Service
+metadata:
+  name: taskflow-backend
+  labels:
+    app: taskflow-backend
+spec:
+  type: ClusterIP
+  selector:
+    app: taskflow-backend
+  ports:
+    - port: 8080
+      targetPort: 8080
