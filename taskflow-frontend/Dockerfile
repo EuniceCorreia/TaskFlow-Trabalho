@@ -12,6 +12,11 @@ RUN npm run build
 # Imagem oficial "unprivileged": roda como usuário 101 na porta 8080
 FROM nginxinc/nginx-unprivileged:stable-alpine
 
+# Atualiza os pacotes do Alpine para as versões com correções de segurança
+# (a imagem base pode ter sido publicada antes das correções saírem)
+USER root
+RUN apk upgrade --no-cache
+
 COPY nginx.conf /etc/nginx/conf.d/default.conf
 COPY --from=build /app/dist /usr/share/nginx/html
 
